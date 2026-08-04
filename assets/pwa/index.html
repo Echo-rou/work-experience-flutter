@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1b2740">
+<title>Work Experience Library</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/pwa-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Work Experience Library">
+<style>
+:root{
+  --bg:#f6f4ef;
+  --card:#ffffff;
+  --ink:#262c36;
+  --ink-soft:#4a5261;
+  --muted:#8b909b;
+  --line:#e8e3d8;
+  --accent:#a5814f;
+  --accent-soft:#f3ecdf;
+  --navy:#1b2740;
+  --navy-2:#243455;
+  --danger:#b4453c;
+  --danger-soft:#f7e8e6;
+  --gold:#c9a86a;
+  --shadow:0 1px 3px rgba(38,44,54,.06),0 4px 16px rgba(38,44,54,.05);
+  --radius:12px;
+  --serif:Georgia,"Songti SC","STSong","SimSun",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  color:var(--ink);
+  font-size:14.5px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#d5cfc0;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ============ Layout ============ */
+#app{display:flex;height:100vh;overflow:hidden}
+.sidebar{
+  width:232px;flex-shrink:0;
+  background:linear-gradient(180deg,var(--navy) 0%,#141d33 100%);
+  color:#c8cfdd;
+  display:flex;flex-direction:column;
+}
+.brand{padding:26px 22px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand h1{font-family:var(--serif);font-size:19px;color:#f0e8d8;letter-spacing:1px;font-weight:600}
+.brand p{font-size:11.5px;color:#7d879e;margin-top:4px;letter-spacing:.5px}
+.nav{flex:1;padding:14px 12px;overflow-y:auto}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;margin-bottom:2px;
+  border-radius:8px;font-size:14px;color:#b6bfd1;
+  transition:background .15s,color .15s;
+  width:100%;text-align:left;
+}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#e8ecf4}
+.nav-item.active{background:rgba(201,168,106,.16);color:var(--gold)}
+.nav-item .icon{width:18px;text-align:center;font-size:15px}
+.nav-item .count{margin-left:auto;font-size:11.5px;background:rgba(255,255,255,.1);padding:1px 7px;border-radius:10px}
+.sidebar-foot{padding:14px 22px;font-size:11px;border-top:1px solid rgba(255,255,255,.07);color:#66708a}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{
+  height:58px;flex-shrink:0;
+  display:flex;align-items:center;gap:14px;
+  padding:0 28px;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+}
+.search-box{flex:1;max-width:560px;position:relative}
+.search-box input{
+  width:100%;padding:8px 14px 8px 36px;
+  border:1px solid var(--line);border-radius:20px;
+  background:var(--bg);outline:none;font-size:13.5px;
+  transition:border-color .15s,box-shadow .15s;
+}
+.search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(165,129,79,.12);background:#fff}
+.search-box .sicon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
+.topbar .spacer{flex:1}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:8px;
+  font-size:13.5px;font-weight:500;
+  transition:all .15s;border:1px solid transparent;
+  white-space:nowrap;
+}
+.btn-primary{background:var(--navy);color:#f0e8d8}
+.btn-primary:hover{background:var(--navy-2)}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-accent:hover{background:#8f6f42}
+.btn-ghost{border-color:var(--line);color:var(--ink-soft);background:#fff}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#98372f}
+.btn-sm{padding:5px 11px;font-size:12.5px;border-radius:6px}
+.view-wrap{flex:1;overflow-y:auto;padding:28px 36px 60px}
+.view-inner{max-width:1240px;margin:0 auto}
+
+/* ============ Common ============ */
+.page-title{font-family:var(--serif);font-size:22px;font-weight:600;margin-bottom:4px}
+.page-desc{color:var(--muted);font-size:13px;margin-bottom:22px}
+.card{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow);
+}
+.entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.entry-grid .entry-card{margin-bottom:0}
+.entry-card{
+  padding:16px 20px;margin-bottom:12px;
+  cursor:pointer;transition:box-shadow .15s,border-color .15s;
+  min-width:0;
+}
+.entry-card:hover{border-color:#d8cfba;box-shadow:0 2px 6px rgba(38,44,54,.07),0 8px 24px rgba(38,44,54,.07)}
+.entry-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.entry-date{
+  font-size:12px;color:var(--muted);flex-shrink:0;
+  font-variant-numeric:tabular-nums;
+}
+.entry-title{font-size:15.5px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.star{color:#d8d2c4;font-size:17px;flex-shrink:0;transition:color .15s,transform .15s}
+.star.on{color:#e0a83e}
+.star:hover{transform:scale(1.2)}
+.entry-summary{color:var(--ink-soft);font-size:13.5px;margin:4px 0 8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.entry-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{
+  font-size:11.5px;padding:2px 10px;border-radius:11px;
+  background:var(--accent-soft);color:var(--accent);font-weight:500;
+}
+.tag{
+  font-size:11.5px;padding:2px 9px;border-radius:11px;
+  background:#eef0f3;color:#68707e;cursor:pointer;transition:background .15s;
+}
+.tag:hover{background:#e2e6ec;color:var(--navy)}
+.empty{
+  text-align:center;padding:70px 20px;color:var(--muted);
+}
+.empty .big{font-size:40px;margin-bottom:12px;opacity:.5}
+.empty p{font-size:13.5px}
+.section-label{
+  font-size:12px;font-weight:600;color:var(--muted);
+  letter-spacing:1.5px;text-transform:uppercase;
+  margin:26px 0 12px;
+}
+.date-group{
+  font-family:var(--serif);font-size:15px;font-weight:600;
+  color:var(--navy);margin:24px 0 10px;
+  display:flex;align-items:center;gap:10px;
+}
+.date-group::after{content:"";flex:1;height:1px;background:var(--line)}
+.date-group .n{font-size:11.5px;color:var(--muted);font-family:var(--sans);font-weight:400}
+mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
+
+/* ============ Home ============ */
+.hero{
+  background:linear-gradient(135deg,var(--navy) 0%,#2a3a5f 100%);
+  border-radius:16px;padding:34px 44px;color:#e8e2d2;
+  margin-bottom:24px;position:relative;overflow:hidden;
+}
+.hero::after{
+  content:"";position:absolute;right:-60px;top:-60px;
+  width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(201,168,106,.22),transparent 70%);
+}
+.hero h2{font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:1px}
+.hero .quote{margin-top:8px;font-size:13.5px;color:#a8b2c7;font-family:var(--serif)}
+.hero .days{margin-top:18px;font-size:13px;color:var(--gold);letter-spacing:.5px}
+.hero .btn{margin-top:14px;position:relative;z-index:1}
+.quick-entry{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 18px;margin-bottom:24px;
+  color:var(--muted);cursor:pointer;transition:border-color .15s;
+}
+.quick-entry:hover{border-color:var(--accent)}
+.quick-entry .plus{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;flex-shrink:0;
+}
+.banner{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 16px;margin-bottom:18px;
+  border-radius:10px;font-size:13px;
+  background:#fdf6e3;border:1px solid #ecdcb4;color:#7a6221;
+}
+.banner.err{background:var(--danger-soft);border-color:#e5c0bc;color:var(--danger)}
+.banner .x{margin-left:auto;color:inherit;opacity:.6;font-size:16px}
+.banner .x:hover{opacity:1}
+
+/* ============ Editor ============ */
+.editor-card{padding:26px 30px}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:6px}
+.field .req{color:var(--danger)}
+.field input[type=text],.field input[type=date],.field input[type=url],.field textarea,.field select{
+  width:100%;padding:9px 13px;
+  border:1px solid var(--line);border-radius:8px;
+  background:#fdfcfb;outline:none;font-size:14px;
+  transition:border-color .15s,box-shadow .15s;
+}
+.field input:focus,.field textarea:focus,.field select:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(165,129,79,.1);background:#fff;
+}
+.field textarea{resize:vertical;min-height:170px;line-height:1.7}
+.field .hint{font-size:12px;color:var(--muted);margin-top:5px}
+.field-row{display:flex;gap:16px}
+.field-row .field{flex:1}
+.tags-input{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fdfcfb;
+  cursor:text;transition:border-color .15s;
+}
+.tags-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(165,129,79,.1);background:#fff}
+.tags-input .tag{display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent);font-size:12px;padding:3px 9px}
+.tags-input .tag .rm{cursor:pointer;opacity:.6;font-size:13px}
+.tags-input .tag .rm:hover{opacity:1}
+.tags-input input{flex:1;min-width:110px;border:none;outline:none;background:transparent;font-size:13.5px;padding:3px}
+.recent-cats{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center}
+.recent-cats .chip{cursor:pointer;opacity:.85}
+.recent-cats .chip:hover{opacity:1;background:var(--accent);color:#fff}
+.md-toolbar{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
+.md-toolbar button{
+  padding:3px 10px;font-size:12px;border-radius:6px;
+  color:var(--muted);border:1px solid transparent;
+}
+.md-toolbar button:hover{background:var(--accent-soft);color:var(--accent)}
+.md-preview{
+  border:1px dashed var(--line);border-radius:8px;
+  padding:14px 18px;background:#fdfcfb;min-height:170px;
+}
+.editor-actions{display:flex;gap:12px;align-items:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.draft-tip{font-size:12px;color:var(--muted);margin-left:auto}
+
+/* Markdown body */
+.md-body{line-height:1.8;font-size:14.5px;word-wrap:break-word}
+.md-body h1,.md-body h2,.md-body h3,.md-body h4{font-family:var(--serif);margin:18px 0 8px;line-height:1.4}
+.md-body h1{font-size:20px}.md-body h2{font-size:18px}.md-body h3{font-size:16px}.md-body h4{font-size:15px}
+.md-body p{margin:8px 0}
+.md-body ul,.md-body ol{margin:8px 0 8px 24px}
+.md-body li{margin:3px 0}
+.md-body blockquote{
+  border-left:3px solid var(--accent);padding:4px 14px;margin:10px 0;
+  background:var(--accent-soft);color:var(--ink-soft);border-radius:0 6px 6px 0;
+}
+.md-body code{
+  background:#f0ede5;padding:2px 6px;border-radius:4px;
+  font-family:"SF Mono",Consolas,Menlo,monospace;font-size:13px;color:#8a5a2b;
+}
+.md-body pre{
+  background:var(--navy);color:#dfe6f2;padding:14px 16px;border-radius:8px;
+  overflow-x:auto;margin:10px 0;
+}
+.md-body pre code{background:none;color:inherit;padding:0}
+.md-body hr{border:none;border-top:1px solid var(--line);margin:16px 0}
+.md-body strong{color:var(--ink)}
+
+/* ============ Detail & Reading ============ */
+.detail-card{padding:30px 36px}
+.detail-title{font-family:var(--serif);font-size:24px;font-weight:600;margin-bottom:10px}
+.detail-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px;color:var(--muted);font-size:13px}
+.detail-block{margin-bottom:22px}
+.detail-block .blabel{font-size:12px;font-weight:600;color:var(--accent);letter-spacing:1px;margin-bottom:8px}
+.summary-box{
+  background:var(--accent-soft);border-left:3px solid var(--accent);
+  padding:14px 18px;border-radius:0 10px 10px 0;
+  font-size:15px;line-height:1.75;color:var(--ink-soft);
+}
+.detail-actions{display:flex;gap:10px;margin-top:26px;padding-top:20px;border-top:1px solid var(--line);flex-wrap:wrap}
+.reading-overlay{
+  position:fixed;inset:0;z-index:200;background:#f8f5ee;
+  overflow-y:auto;padding:60px 20px 100px;
+}
+.reading-inner{max-width:720px;margin:0 auto}
+.reading-inner h1{font-family:var(--serif);font-size:30px;margin-bottom:8px}
+.reading-inner .rmeta{color:var(--muted);font-size:13px;margin-bottom:36px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.reading-inner .md-body{font-size:17px;line-height:2;font-family:var(--serif)}
+.reading-close{
+  position:fixed;top:20px;right:26px;
+  width:40px;height:40px;border-radius:50%;
+  background:#fff;border:1px solid var(--line);
+  font-size:17px;color:var(--muted);box-shadow:var(--shadow);
+}
+
+/* ============ Tags / Categories ============ */
+.tag-cloud{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px}
+.tag-cloud .tag{font-size:13px;padding:5px 14px}
+.tag-cloud .tag.active{background:var(--navy);color:#f0e8d8}
+.tag-cloud .tag .n{opacity:.6;font-size:11px;margin-left:3px}
+.cat-row{
+  display:flex;align-items:center;gap:12px;
+  padding:13px 18px;margin-bottom:8px;
+}
+.cat-row .cname{flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-row .ccount{font-size:12px;color:var(--muted);flex-shrink:0}
+.cat-add{display:flex;gap:10px;margin-bottom:20px}
+.cat-add input{flex:1;padding:9px 13px;border:1px solid var(--line);border-radius:8px;outline:none;background:#fff}
+.cat-add input:focus{border-color:var(--accent)}
+
+/* ============ Modal / Toast / Lock ============ */
+.modal-mask{
+  position:fixed;inset:0;z-index:300;
+  background:rgba(27,39,64,.45);
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(2px);
+}
+.modal{
+  background:#fff;border-radius:14px;padding:26px 28px;
+  width:400px;max-width:92vw;box-shadow:0 12px 48px rgba(0,0,0,.18);
+}
+.modal h3{font-size:16.5px;margin-bottom:10px}
+.modal p{font-size:13.5px;color:var(--ink-soft);margin-bottom:20px;line-height:1.7;white-space:pre-line}
+.modal .m-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.modal input{width:100%;padding:9px 13px;border:1px solid var(--line);border-radius:8px;outline:none;margin-bottom:16px}
+.modal input:focus{border-color:var(--accent)}
+#toast-wrap{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:400;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{
+  background:var(--navy);color:#e8ecf4;
+  padding:9px 20px;border-radius:22px;font-size:13px;
+  box-shadow:0 4px 18px rgba(0,0,0,.2);
+  animation:tin .25s ease;max-width:88vw;text-align:center;
+}
+.toast.err{background:var(--danger)}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.lock-screen{
+  position:fixed;inset:0;z-index:500;
+  background:linear-gradient(135deg,var(--navy),#141d33);
+  display:flex;align-items:center;justify-content:center;
+}
+.lock-box{text-align:center;width:320px}
+.lock-box h2{font-family:var(--serif);color:#f0e8d8;font-size:22px;margin-bottom:6px}
+.lock-box p{color:#7d879e;font-size:12.5px;margin-bottom:26px}
+.lock-box input{
+  width:100%;padding:11px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.07);color:#fff;outline:none;text-align:center;
+  font-size:15px;letter-spacing:2px;margin-bottom:14px;
+}
+.lock-box input:focus{border-color:var(--gold)}
+.lock-box .btn{width:100%;justify-content:center;padding:11px}
+.lock-err{color:#e08d85;font-size:12.5px;margin-top:12px;min-height:18px}
+
+/* ============ Settings ============ */
+.set-block{padding:22px 26px;margin-bottom:16px}
+.set-block h3{font-size:15.5px;margin-bottom:6px}
+.set-block p{font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.7}
+.set-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.set-row input{flex:1;min-width:180px;padding:8px 13px;border:1px solid var(--line);border-radius:8px;outline:none}
+.set-row input:focus{border-color:var(--accent)}
+.kbd{
+  display:inline-block;padding:1px 7px;border-radius:5px;
+  background:#eef0f3;border:1px solid #dcdfe5;border-bottom-width:2px;
+  font-size:12px;font-family:monospace;color:var(--ink-soft);
+}
+.shortcut-table{font-size:13.5px;color:var(--ink-soft);line-height:2.2}
+
+/* ============ Mobile ============ */
+.bottom-nav{
+  display:none;position:fixed;left:0;right:0;bottom:0;z-index:150;
+  background:var(--navy);border-top:1px solid rgba(255,255,255,.1);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.bottom-nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;
+  color:#8a94ab;font-size:10.5px;padding:7px 0 5px;
+}
+.bottom-nav button .bi{font-size:19px;line-height:1.3}
+.bottom-nav button.active{color:var(--gold)}
+.bottom-nav button.bn-new .bi{
+  width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:25px;
+  margin-top:-20px;box-shadow:0 3px 12px rgba(0,0,0,.35);
+}
+.menu-list button{
+  display:block;width:100%;padding:13px 4px;font-size:15px;text-align:left;
+  border-bottom:1px solid var(--line);
+}
+.menu-list button:last-child{border-bottom:none}
+@media (max-width:1000px){
+  .entry-grid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .sidebar{display:none}
+  .topbar{padding:0 14px;height:52px}
+  #btn-new-top{display:none}
+  .view-wrap{padding:16px 14px 96px}
+  .field-row{flex-direction:column;gap:0}
+  .hero{padding:24px 20px}
+  .hero h2{font-size:20px}
+  .detail-card{padding:22px 18px}
+  .editor-card{padding:18px 16px}
+  .bottom-nav{display:flex}
+  .entry-title{white-space:normal}
+  .modal{width:92vw}
+}
+</style>
+</head>
+<body>
+
+<div id="lock-screen" class="lock-screen" style="display:none">
+  <div class="lock-box">
+    <h2>Daily Work Record</h2>
+    <p>Screen lock only · This password does not encrypt stored data</p>
+    <input type="password" id="lock-input" placeholder="Enter password" autocomplete="off">
+    <button class="btn btn-accent" id="lock-btn">Unlock</button>
+    <div class="lock-err" id="lock-err"></div>
+  </div>
+</div>
+
+<div id="app" style="visibility:hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>Daily Record</h1>
+      <p>ONE TAKEAWAY A DAY</p>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">Local only · No cloud</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-box">
+        <span class="sicon">⌕</span>
+        <input type="text" id="global-search" placeholder="Search title / thoughts / takeaway / category / tag…  (Ctrl+F)">
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="btn-new-top">＋ New Record</button>
+    </div>
+    <div class="view-wrap" id="view-wrap">
+      <div class="view-inner" id="view"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-wrap"></div>
+<nav class="bottom-nav" id="bottom-nav"></nav>
+<div id="modal-root"></div>
+
+<script>
+"use strict";
+/* =====================================================
+ * Daily Work Record
+ * Single-file app · IndexedDB / LAN sync · No dependencies
+ * ===================================================== */
+
+/* ---------------- 1. Utils ---------------- */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,9); }
+function pad(n){ return n<10 ? "0"+n : ""+n; }
+function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function fmtTime(ts){ const d=new Date(ts); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes()); }
+function escapeHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function debounce(fn,ms){ let t; return function(){ clearTimeout(t); const a=arguments; t=setTimeout(()=>fn.apply(null,a),ms); }; }
+function safeHttpUrl(value){ try{ const u=new URL(String(value||"")); return (u.protocol==="http:"||u.protocol==="https:")?u.href:""; }catch(e){ return ""; } }
+
+function toast(msg, isErr){
+  const el=document.createElement("div");
+  el.className="toast"+(isErr?" err":"");
+  el.textContent=msg;
+  $("#toast-wrap").appendChild(el);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .3s"; setTimeout(()=>el.remove(),320); },2600);
+}
+
+/* Confirm dialog: Promise<true | "third" | false> */
+function confirmDialog(title, msg, opts){
+  opts=opts||{};
+  return new Promise(resolve=>{
+    const root=$("#modal-root");
+    const mask=document.createElement("div");
+    mask.className="modal-mask";
+    mask.innerHTML=
+      '<div class="modal"><h3>'+escapeHtml(title)+'</h3><p>'+escapeHtml(msg)+'</p>'+
+      '<div class="m-actions">'+
+      (opts.third?'<button class="btn btn-ghost btn-sm" data-v="third">'+escapeHtml(opts.third)+'</button>':"")+
+      '<button class="btn btn-ghost btn-sm" data-v="no">Cancel</button>'+
+      '<button class="btn '+(opts.danger?"btn-danger":"btn-primary")+' btn-sm" data-v="yes">'+escapeHtml(opts.okText||"OK")+'</button>'+
+      '</div></div>';
+    root.appendChild(mask);
+    mask.addEventListener("click",e=>{
+      if(e.target===mask){ done("no"); return; }
+      const v=e.target.getAttribute && e.target.getAttribute("data-v");
+      if(v){ done(v); }
+    });
+    function done(v){ mask.remove(); resolve(v==="yes"?true:(v==="third"?"third":false)); }
+  });
+}
+
+async function hashStr(s){
+  try{
+    if(window.crypto && crypto.subtle){
+      const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s+"::fengkong-salt"));
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+    }
+  }catch(e){}
+  let h=5381; const str=s+"::fengkong-salt";
+  for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; }
+  return "f"+h.toString(16);
+}
+
+/* ---------------- 2. Lightweight Markdown ---------------- */
+function renderMarkdown(src){
+  if(!src) return "";
+  const lines=String(src).replace(/\r\n/g,"\n").split("\n");
+  let html="", inCode=false, codeBuf=[], listType=null, para=[];
+
+  function inline(t){
+    t=escapeHtml(t);
+    t=t.replace(/`([^`]+)`/g,"<code>$1</code>");
+    t=t.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
+    t=t.replace(/(^|[^*])\*([^*\n]+)\*/g,"$1<em>$2</em>");
+    t=t.replace(/~~([^~]+)~~/g,"<del>$1</del>");
+    t=t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return t;
+  }
+  function flushPara(){
+    if(para.length){ html+="<p>"+para.map(inline).join("<br>")+"</p>"; para=[]; }
+  }
+  function flushList(){
+    if(listType){ html+=listType==="ul"?"</ul>":"</ol>"; listType=null; }
+  }
+  for(let raw of lines){
+    const line=raw;
+    if(/^\s*```/.test(line)){
+      if(inCode){ html+="<pre><code>"+escapeHtml(codeBuf.join("\n"))+"</code></pre>"; codeBuf=[]; inCode=false; }
+      else{ flushPara(); flushList(); inCode=true; }
+      continue;
+    }
+    if(inCode){ codeBuf.push(line); continue; }
+    if(/^\s*$/.test(line)){ flushPara(); flushList(); continue; }
+    let m;
+    if(m=line.match(/^(#{1,4})\s+(.*)$/)){ flushPara(); flushList(); const lv=m[1].length; html+="<h"+lv+">"+inline(m[2])+"</h"+lv+">"; continue; }
+    if(/^>\s?/.test(line)){ flushPara(); flushList(); html+="<blockquote>"+inline(line.replace(/^>\s?/,""))+"</blockquote>"; continue; }
+    if(/^\s*[-*]\s+/.test(line)){ flushPara(); if(listType!=="ul"){ flushList(); html+="<ul>"; listType="ul"; } html+="<li>"+inline(line.replace(/^\s*[-*]\s+/,""))+"</li>"; continue; }
+    if(/^\s*\d+\.\s+/.test(line)){ flushPara(); if(listType!=="ol"){ flushList(); html+="<ol>"; listType="ol"; } html+="<li>"+inline(line.replace(/^\s*\d+\.\s+/,""))+"</li>"; continue; }
+    if(/^\s*(-{3,}|\*{3,})\s*$/.test(line)){ flushPara(); flushList(); html+="<hr>"; continue; }
+    para.push(line);
+  }
+  flushPara(); flushList();
+  if(inCode){ html+="<pre><code>"+escapeHtml(codeBuf.join("\n"))+"</code></pre>"; }
+  return html;
+}
+
+/* ---------------- 3. Storage (always local-first; HTTPS LAN sync in background) ---------------- */
+const DB_NAME="fengkong_kb", DB_VER=2;
+const Storage={
+  mode:"idb", db:null, err:null, key:"", syncing:false, lastSyncAt:0,
+  open(){
+    const q=new URLSearchParams(location.search);
+    this.key=q.get("k")||"";
+    try{
+      if(this.key) localStorage.setItem("fk_key",this.key);
+      else this.key=localStorage.getItem("fk_key")||"";
+    }catch(e){}
+    return this._openIdb();
+  },
+  _openIdb(){
+    return new Promise(resolve=>{
+      let req;
+      try{ req=indexedDB.open(DB_NAME,DB_VER); }
+      catch(e){ this._fallback("IndexedDB is not supported by this browser"); return resolve(); }
+      req.onupgradeneeded=e=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains("entries")) db.createObjectStore("entries",{keyPath:"id"});
+        if(!db.objectStoreNames.contains("categories")) db.createObjectStore("categories",{keyPath:"name"});
+        if(!db.objectStoreNames.contains("meta")) db.createObjectStore("meta",{keyPath:"key"});
+      };
+      req.onsuccess=e=>{ this.db=e.target.result; resolve(); };
+      req.onerror=()=>{ this._fallback("Failed to open IndexedDB"); resolve(); };
+      req.onblocked=()=>{ this._fallback("IndexedDB is blocked by another tab"); resolve(); };
+    });
+  },
+  _req(method,url,body){
+    return fetch(url,{
+      method:method,
+      headers:{"Content-Type":"application/json","X-Key":this.key||""},
+      body:body?JSON.stringify(body):undefined,
+      cache:"no-store"
+    }).then(async r=>{
+      let data={};
+      try{ data=await r.json(); }catch(e){}
+      if(!r.ok) throw new Error(data.error||("Server responded "+r.status));
+      return data;
+    });
+  },
+  _fallback(reason){ this.mode="ls"; this.err=reason; console.warn("[storage fallback] "+reason); },
+  _lsKey(store){ return "fk_"+store; },
+  _lsRead(store){ try{ return JSON.parse(localStorage.getItem(this._lsKey(store))||"{}"); }catch(e){ return {}; } },
+  _lsWrite(store,obj){ localStorage.setItem(this._lsKey(store),JSON.stringify(obj)); },
+  getAll(store){
+    if(this.mode==="ls") return Promise.resolve(Object.values(this._lsRead(store)));
+    return new Promise((res,rej)=>{
+      const tx=this.db.transaction(store,"readonly"), rq=tx.objectStore(store).getAll();
+      rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>rej(rq.error);
+    });
+  },
+  put(store,val){
+    if(this.mode==="ls"){
+      const o=this._lsRead(store);
+      o[store==="categories"?val.name:(store==="meta"?val.key:val.id)]=val;
+      this._lsWrite(store,o); return Promise.resolve();
+    }
+    return new Promise((res,rej)=>{
+      const tx=this.db.transaction(store,"readwrite");
+      tx.objectStore(store).put(val); tx.oncomplete=()=>{ res(); if(!this.syncing) queueSync(); }; tx.onerror=()=>rej(tx.error);
+    });
+  },
+  del(store,key){
+    if(this.mode==="ls"){ const o=this._lsRead(store); delete o[key]; this._lsWrite(store,o); return Promise.resolve(); }
+    return new Promise((res,rej)=>{
+      const tx=this.db.transaction(store,"readwrite");
+      tx.objectStore(store).delete(key); tx.oncomplete=()=>{ res(); if(!this.syncing) queueSync(); }; tx.onerror=()=>rej(tx.error);
+    });
+  },
+  clear(store){
+    if(this.mode==="ls"){ this._lsWrite(store,{}); return Promise.resolve(); }
+    return new Promise((res,rej)=>{
+      const tx=this.db.transaction(store,"readwrite");
+      tx.objectStore(store).clear(); tx.oncomplete=()=>{ res(); if(!this.syncing) queueSync(); }; tx.onerror=()=>rej(tx.error);
+    });
+  },
+  _version(e){ return Math.max(Number(e&&e.updatedAt)||0,Number(e&&e.deletedAt)||0); },
+  async sync(){
+    if(this.syncing||!this.key) return false;
+    this.syncing=true;
+    try{
+      const entries=await this.getAll("entries");
+      const categories=await this.getAll("categories");
+      const data=await this._req("POST","/api/sync",{entries:entries,categories:categories});
+      const localById=new Map(entries.map(e=>[e.id,e]));
+      for(const remote of (data.entries||[])){
+        const local=localById.get(remote.id);
+        if(!local||this._version(remote)>=this._version(local)) await this.put("entries",remote);
+      }
+      const localCats=new Set(categories.map(c=>c.name));
+      for(const remote of (data.categories||[])){
+        if(remote&&remote.name&&!localCats.has(remote.name)) await this.put("categories",remote);
+      }
+      this.lastSyncAt=Date.now();
+      return true;
+    }finally{ this.syncing=false; }
+  }
+};
+/* ---------------- 4. State ---------------- */
+const DEFAULT_CATS=["Work","Learning","Life","Ideas","Reading"];
+const state={
+  entries:[],
+  categories:[],
+  meta:{ recentCats:[], lastBackupAt:0, lockHash:"", backupBannerDismissed:0 },
+  view:"home",
+  searchQuery:"",
+  tagFilter:null,
+  editingId:null,
+  detailId:null,
+  corruptCount:0
+};
+
+function activeEntries(){ return state.entries.filter(e=>!e.deleted&&!e.purged); }
+function trashedEntries(){ return state.entries.filter(e=>e.deleted&&!e.purged); }
+function entryById(id){ return state.entries.find(e=>e.id===id); }
+
+async function loadAll(){
+  let entryReadFailed=false;
+  try{
+    state.entries=await Storage.getAll("entries");
+  }catch(e){ state.entries=[]; entryReadFailed=true; }
+  const bad=[];
+  state.entries=(state.entries||[]).filter(e=>{
+    if(!e || typeof e!=="object" || (!e.title && !e.content && !e.summary)){ bad.push(e); return false; }
+    e.tags=Array.isArray(e.tags)?e.tags:[];
+    return true;
+  });
+  state.corruptCount=entryReadFailed?-1:bad.length;
+
+  try{ state.categories=await Storage.getAll("categories"); }catch(e){ state.categories=[]; }
+  if(!state.categories.length){
+    for(const c of DEFAULT_CATS) await Storage.put("categories",{name:c,createdAt:Date.now()});
+    state.categories=await Storage.getAll("categories");
+  }
+  try{
+    const metas=await Storage.getAll("meta");
+    metas.forEach(m=>{ state.meta[m.key]=m.value; });
+  }catch(e){}
+  if(!Array.isArray(state.meta.recentCats)) state.meta.recentCats=[];
+}
+async function saveMeta(key){
+  await Storage.put("meta",{key:key,value:state.meta[key]});
+}
+
+/* ---------------- 5. Entry ops ---------------- */
+async function saveEntry(data){
+  const now=Date.now();
+  let e;
+  if(data.id){
+    e=entryById(data.id);
+    if(!e) throw new Error("Record not found");
+    Object.assign(e,data,{updatedAt:now});
+  }else{
+    e=Object.assign({
+      id:uid(), date:todayStr(), title:"", category:"", tags:[],
+      content:"", summary:"", favorite:false, link:"",
+      createdAt:now, updatedAt:now, deleted:false
+    },data);
+    state.entries.push(e);
+  }
+  await Storage.put("entries",e);
+  if(e.category){
+    const rc=state.meta.recentCats.filter(c=>c!==e.category);
+    rc.unshift(e.category);
+    state.meta.recentCats=rc.slice(0,6);
+    await saveMeta("recentCats");
+    if(!state.categories.find(c=>c.name===e.category)){
+      const c={name:e.category,createdAt:now};
+      state.categories.push(c);
+      await Storage.put("categories",c);
+    }
+  }
+  return e;
+}
+async function toggleFavorite(id){
+  const e=entryById(id); if(!e) return;
+  e.favorite=!e.favorite; e.updatedAt=Date.now();
+  await Storage.put("entries",e);
+}
+async function softDelete(id){
+  const e=entryById(id); if(!e) return;
+  e.deleted=true; e.deletedAt=Date.now();
+  await Storage.put("entries",e);
+}
+async function restoreEntry(id){
+  const e=entryById(id); if(!e) return;
+  e.deleted=false; delete e.deletedAt;
+  await Storage.put("entries",e);
+}
+async function purgeEntry(id){
+  const e=entryById(id); if(!e) return;
+  const now=Date.now();
+  Object.assign(e,{deleted:true,purged:true,deletedAt:now,updatedAt:now});
+  await Storage.put("entries",e);
+}
+
+/* ---------------- 6. Views ---------------- */
+const NAVS=[
+  {key:"home",      icon:"⌂", txt:"Home"},
+  {key:"timeline",  icon:"🕘", txt:"Timeline"},
+  {key:"favorites", icon:"★", txt:"Favorites"},
+  {key:"tags",      icon:"#", txt:"Tags"},
+  {key:"categories",icon:"▤", txt:"Categories"},
+  {key:"trash",     icon:"🗑", txt:"Trash"},
+  {key:"settings",  icon:"⚙", txt:"Settings"}
+];
+
+function renderNav(){
+  const fav=activeEntries().filter(e=>e.favorite).length;
+  const trash=trashedEntries().length;
+  $("#nav").innerHTML=NAVS.map(n=>{
+    let count="";
+    
+    if(n.key==="trash"&&trash) count='<span class="count">'+trash+'</span>';
+    return '<button class="nav-item'+(state.view===n.key?" active":"")+'" data-nav="'+n.key+'">'+
+      '<span class="icon">'+n.icon+'</span><span class="txt">'+n.txt+'</span>'+count+'</button>';
+  }).join("");
+  $$("#nav .nav-item").forEach(b=>b.onclick=()=>go(b.getAttribute("data-nav")));
+  renderBottomNav();
+}
+
+/* Mobile bottom nav */
+function renderBottomNav(){
+  const el=$("#bottom-nav");
+  if(!el) return;
+  const items=[
+    {key:"home",      icon:"⌂", txt:"Home"},
+    {key:"timeline",  icon:"🕘", txt:"Time"},
+    {key:"__new",     icon:"＋", txt:"Record"},
+    {key:"favorites", icon:"★", txt:"Saved"},
+    {key:"__menu",    icon:"☰", txt:"Menu"}
+  ];
+  el.innerHTML=items.map(i=>
+    '<button class="'+(i.key===state.view?"active":"")+(i.key==="__new"?" bn-new":"")+'" data-bn="'+i.key+'">'+
+    '<span class="bi">'+i.icon+'</span>'+i.txt+'</button>'
+  ).join("");
+  el.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
+    const k=b.getAttribute("data-bn");
+    if(k==="__new"){ go("editor"); return; }
+    if(k==="__menu"){ openMobileMenu(); return; }
+    go(k);
+  });
+}
+function openMobileMenu(){
+  const root=$("#modal-root");
+  const mask=document.createElement("div");
+  mask.className="modal-mask";
+  mask.innerHTML='<div class="modal"><h3>More</h3><div class="menu-list">'+
+    '<button data-v="tags">#&nbsp;&nbsp;Tags</button>'+
+    '<button data-v="categories">▤&nbsp;&nbsp;Categories</button>'+
+    '<button data-v="trash">🗑&nbsp;&nbsp;Trash</button>'+
+    '<button data-v="settings">⚙&nbsp;&nbsp;Settings</button>'+
+    '</div><div class="m-actions" style="margin-top:16px"><button class="btn btn-ghost btn-sm" data-v="">Close</button></div></div>';
+  root.appendChild(mask);
+  mask.addEventListener("click",e=>{
+    if(e.target===mask){ mask.remove(); return; }
+    const t=e.target.closest("[data-v]");
+    if(!t) return;
+    const v=t.getAttribute("data-v");
+    mask.remove();
+    if(v) go(v);
+  });
+}
+
+function go(view,arg){
+  state.view=view;
+  if(view==="detail") state.detailId=arg;
+  if(view==="editor") state.editingId=arg||null;
+  render();
+  $("#view-wrap").scrollTop=0;
+}
+
+function render(){
+  renderNav();
+  const v=$("#view");
+  switch(state.view){
+    case "home":       renderHome(v); break;
+    case "timeline":   renderTimeline(v); break;
+    case "favorites":  renderFavorites(v); break;
+    case "tags":       renderTags(v); break;
+    case "categories": renderCategories(v); break;
+    case "trash":      renderTrash(v); break;
+    case "settings":   renderSettings(v); break;
+    case "search":     renderSearch(v); break;
+    case "editor":     renderEditor(v); break;
+    case "detail":     renderDetail(v); break;
+    default:           renderHome(v);
+  }
+}
+
+function entryCard(e, highlightQ){
+  const hl = s => {
+    let t=escapeHtml(s||"");
+    if(highlightQ){
+      const q=escapeHtml(highlightQ).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      t=t.replace(new RegExp("("+q+")","gi"),"<mark>$1</mark>");
+    }
+    return t;
+  };
+  return '<div class="card entry-card" data-id="'+escapeHtml(e.id)+'">'+
+    '<div class="entry-head">'+
+      '<span class="entry-date">'+escapeHtml(e.date)+'</span>'+
+      '<span class="entry-title">'+hl(e.title||"(Untitled)")+'</span>'+
+      '<button class="star'+(e.favorite?" on":"")+'" data-star="'+escapeHtml(e.id)+'" title="Favorite">★</button>'+
+    '</div>'+
+    (e.summary?'<div class="entry-summary">'+hl(e.summary)+'</div>':"")+
+    '<div class="entry-meta">'+
+      (e.category?'<span class="chip">'+escapeHtml(e.category)+'</span>':"")+
+      e.tags.map(t=>'<span class="tag" data-tag="'+escapeHtml(t)+'">#'+escapeHtml(t)+'</span>').join("")+
+    '</div></div>';
+}
+function bindEntryCards(root){
+  root.querySelectorAll(".entry-card").forEach(c=>{
+    c.addEventListener("click",ev=>{
+      if(ev.target.closest("[data-star]")||ev.target.closest("[data-tag]")) return;
+      go("detail",c.getAttribute("data-id"));
+    });
+  });
+  root.querySelectorAll("[data-star]").forEach(b=>{
+    b.addEventListener("click",async ev=>{
+      ev.stopPropagation();
+      await toggleFavorite(b.getAttribute("data-star"));
+      render();
+    });
+  });
+  root.querySelectorAll("[data-tag]").forEach(t=>{
+    t.addEventListener("click",ev=>{
+      ev.stopPropagation();
+      state.tagFilter=t.getAttribute("data-tag");
+      go("tags");
+    });
+  });
+}
+
+function backupBanner(){
+  const list=activeEntries();
+  if(!list.length) return "";
+  const last=state.meta.lastBackupAt||0;
+  const dismissed=state.meta.backupBannerDismissed||0;
+  const sevenDays=7*24*3600*1000;
+  if(Date.now()-last>sevenDays && last>=dismissed){
+    const days=last?Math.floor((Date.now()-last)/86400000):null;
+    return '<div class="banner">⚠ '+(days?("No backup for "+days+" days."):"Never backed up.")+
+      ' Export a JSON backup to keep your records safe.'+
+      '<button class="btn btn-sm btn-ghost" id="bn-export">Back up now</button>'+
+      '<button class="x" id="bn-close" title="Snooze for a week">×</button></div>';
+  }
+  return "";
+}
+function bindBanner(root){
+  const ex=root.querySelector("#bn-export");
+  if(ex) ex.onclick=()=>exportData();
+  const cl=root.querySelector("#bn-close");
+  if(cl) cl.onclick=async ()=>{
+    state.meta.backupBannerDismissed=Date.now();
+    await saveMeta("backupBannerDismissed");
+    render();
+  };
+}
+
+/* ---- Home ---- */
+function renderHome(v){
+  const list=activeEntries().sort((a,b)=> b.date===a.date ? b.createdAt-a.createdAt : (b.date>a.date?1:-1));
+  const days=new Set(list.map(e=>e.date)).size;
+  let html="";
+  if(Storage.mode==="ls"){
+    html+='<div class="banner err">⚠ '+escapeHtml(Storage.err||"Local database unavailable")+'. Data is stored in this browser only (localStorage) and will NOT sync. Please export backups regularly.</div>';
+  }
+  if(state.corruptCount>0){
+    html+='<div class="banner err">⚠ '+state.corruptCount+' corrupted record(s) were skipped. Restore from a backup if this is unexpected.</div>';
+  }
+  html+=backupBanner();
+  html+=
+    '<div class="hero"><h2>Daily Work Record</h2>'+
+    '<div class="quote">One takeaway a day — years later, it becomes your own knowledge base.</div>'+
+    '<div class="days">✎ Recorded on '+days+' day'+(days===1?"":"s")+'</div>'+
+    '<button class="btn btn-accent" id="hero-new">＋ Record Today</button></div>'+
+    '<div class="card quick-entry" id="quick-new"><div class="plus">＋</div><div>Any thought or takeaway today? Click to record…</div></div>'+
+    '<div class="section-label">Recent Records</div>';
+  if(!list.length){
+    html+='<div class="empty"><div class="big">📝</div><p>No records yet.<br>Start with your first takeaway today.</p></div>';
+  }else{
+    html+='<div class="entry-grid">'+list.slice(0,8).map(e=>entryCard(e)).join("")+'</div>';
+    if(list.length>8) html+='<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost btn-sm" id="more-btn">View all '+list.length+' records →</button></div>';
+  }
+  v.innerHTML=html;
+  $("#hero-new").onclick=()=>go("editor");
+  $("#quick-new").onclick=()=>go("editor");
+  const mb=$("#more-btn"); if(mb) mb.onclick=()=>go("timeline");
+  bindEntryCards(v); bindBanner(v);
+}
+
+/* ---- Timeline ---- */
+function renderTimeline(v){
+  const list=activeEntries().sort((a,b)=> b.date===a.date ? b.createdAt-a.createdAt : (b.date>a.date?1:-1));
+  let html='<div class="page-title">Timeline</div><div class="page-desc">Review your records day by day, newest first.</div>';
+  if(!list.length){
+    html+='<div class="empty"><div class="big">🕘</div><p>No records yet.</p></div>';
+  }else{
+    let curDate=null, buf=[];
+    const flush=()=>{ if(buf.length){ html+='<div class="entry-grid">'+buf.join("")+'</div>'; buf=[]; } };
+    for(const e of list){
+      if(e.date!==curDate){
+        flush();
+        curDate=e.date;
+        const n=list.filter(x=>x.date===curDate).length;
+        html+='<div class="date-group">'+escapeHtml(curDate)+'<span class="n">'+n+' record'+(n===1?"":"s")+'</span></div>';
+      }
+      buf.push(entryCard(e));
+    }
+    flush();
+  }
+  v.innerHTML=html;
+  bindEntryCards(v);
+}
+
+/* ---- Favorites ---- */
+function renderFavorites(v){
+  const list=activeEntries().filter(e=>e.favorite).sort((a,b)=>b.updatedAt-a.updatedAt);
+  let html='<div class="page-title">Favorites</div><div class="page-desc">Your core takeaways, worth revisiting often.</div>';
+  if(!list.length){
+    html+='<div class="empty"><div class="big">★</div><p>No favorites yet. Tap ★ on any record to pin it here.</p></div>';
+  }else{
+    html+='<div class="entry-grid">'+list.map(e=>entryCard(e)).join("")+'</div>';
+  }
+  v.innerHTML=html;
+  bindEntryCards(v);
+}
+
+/* ---- Tags ---- */
+function renderTags(v){
+  const map={};
+  activeEntries().forEach(e=>e.tags.forEach(t=>{ map[t]=(map[t]||0)+1; }));
+  const tags=Object.keys(map).sort((a,b)=>map[b]-map[a]);
+  let html='<div class="page-title">Tags</div><div class="page-desc">Click a tag to see related records.</div>';
+  if(!tags.length){
+    html+='<div class="empty"><div class="big">#</div><p>No tags yet. Add free tags when recording.</p></div>';
+  }else{
+    html+='<div class="tag-cloud">'+tags.map(t=>
+      '<span class="tag'+(state.tagFilter===t?" active":"")+'" data-tag="'+escapeHtml(t)+'">#'+escapeHtml(t)+'<span class="n">'+map[t]+'</span></span>'
+    ).join("")+'</div>';
+    if(state.tagFilter){
+      const list=activeEntries().filter(e=>e.tags.includes(state.tagFilter))
+        .sort((a,b)=>b.date>a.date?1:-1);
+      html+='<div class="section-label">#'+escapeHtml(state.tagFilter)+' · '+list.length+' record'+(list.length===1?"":"s")+'</div>';
+      html+='<div class="entry-grid">'+list.map(e=>entryCard(e)).join("")+'</div>';
+    }
+  }
+  v.innerHTML=html;
+  v.querySelectorAll(".tag-cloud .tag").forEach(t=>{
+    t.onclick=()=>{
+      const name=t.getAttribute("data-tag");
+      state.tagFilter = state.tagFilter===name ? null : name;
+      render();
+    };
+  });
+  bindEntryCards(v);
+}
+
+/* ---- Categories ---- */
+function renderCategories(v){
+  const list=activeEntries();
+  let html='<div class="page-title">Categories</div><div class="page-desc">Your own categories. Add, rename or delete.</div>'+
+    '<div class="cat-add"><input type="text" id="cat-new" placeholder="New category name, e.g. Negotiation"><button class="btn btn-primary" id="cat-add-btn">Add</button></div>';
+  if(!state.categories.length){
+    html+='<div class="empty"><div class="big">▤</div><p>No categories yet.</p></div>';
+  }else{
+    const cats=state.categories.slice().sort((a,b)=>a.createdAt-b.createdAt);
+    for(const c of cats){
+      const n=list.filter(e=>e.category===c.name).length;
+      html+='<div class="card cat-row"><span class="cname">'+escapeHtml(c.name)+'</span>'+
+        '<span class="ccount">'+n+' record'+(n===1?"":"s")+'</span>'+
+        '<button class="btn btn-ghost btn-sm" data-ren="'+escapeHtml(c.name)+'">Rename</button>'+
+        '<button class="btn btn-ghost btn-sm" data-delcat="'+escapeHtml(c.name)+'">Delete</button></div>';
+    }
+  }
+  v.innerHTML=html;
+  const addCat=async ()=>{
+    const inp=$("#cat-new"); const name=inp.value.trim();
+    if(!name){ toast("Please enter a category name",true); return; }
+    if(state.categories.find(c=>c.name===name)){ toast("Category already exists",true); return; }
+    const c={name,createdAt:Date.now()};
+    state.categories.push(c);
+    await Storage.put("categories",c);
+    toast('Category "'+name+'" added');
+    render();
+  };
+  $("#cat-add-btn").onclick=addCat;
+  $("#cat-new").addEventListener("keydown",e=>{ if(e.key==="Enter") addCat(); });
+  v.querySelectorAll("[data-ren]").forEach(b=>{
+    b.onclick=async ()=>{
+      const old=b.getAttribute("data-ren");
+      const name=prompt('Rename category "'+old+'" to:',old);
+      if(!name||!name.trim()||name.trim()===old) return;
+      const nn=name.trim();
+      if(state.categories.find(c=>c.name===nn)){ toast("That name is already taken",true); return; }
+      const c=state.categories.find(x=>x.name===old);
+      await Storage.del("categories",old);
+      c.name=nn; await Storage.put("categories",c);
+      for(const e of state.entries){ if(e.category===old){ e.category=nn; await Storage.put("entries",e); } }
+      state.meta.recentCats=state.meta.recentCats.map(x=>x===old?nn:x);
+      await saveMeta("recentCats");
+      toast("Category renamed");
+      render();
+    };
+  });
+  v.querySelectorAll("[data-delcat]").forEach(b=>{
+    b.onclick=async ()=>{
+      const name=b.getAttribute("data-delcat");
+      const n=activeEntries().filter(e=>e.category===name).length;
+      const ok=await confirmDialog("Delete Category",
+        'Delete category "'+name+'"?'+(n?" Its "+n+" record(s) will be moved to \"Uncategorized\", not deleted.":""),
+        {danger:true,okText:"Delete"});
+      if(!ok) return;
+      state.categories=state.categories.filter(c=>c.name!==name);
+      await Storage.del("categories",name);
+      for(const e of state.entries){ if(e.category===name){ e.category="Uncategorized"; await Storage.put("entries",e); } }
+      state.meta.recentCats=state.meta.recentCats.filter(x=>x!==name);
+      await saveMeta("recentCats");
+      toast("Category deleted");
+      render();
+    };
+  });
+}
+
+/* ---- Trash ---- */
+function renderTrash(v){
+  const list=trashedEntries().sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
+  let html='<div class="page-title">Trash</div><div class="page-desc">Deleted records land here first. Restore or delete forever.</div>';
+  if(!list.length){
+    html+='<div class="empty"><div class="big">🗑</div><p>Trash is empty.</p></div>';
+  }else{
+    html+='<div style="margin-bottom:14px"><button class="btn btn-danger btn-sm" id="empty-trash">Empty trash ('+list.length+')</button></div>';
+    for(const e of list){
+      html+='<div class="card cat-row"><span class="cname">'+escapeHtml(e.title||"(Untitled)")+'</span>'+
+        '<span class="ccount">Deleted '+(e.deletedAt?fmtTime(e.deletedAt):"-")+'</span>'+
+        '<button class="btn btn-ghost btn-sm" data-restore="'+escapeHtml(e.id)+'">Restore</button>'+
+        '<button class="btn btn-danger btn-sm" data-purge="'+escapeHtml(e.id)+'">Delete forever</button></div>';
+    }
+  }
+  v.innerHTML=html;
+  const et=$("#empty-trash");
+  if(et) et.onclick=async ()=>{
+    const ok=await confirmDialog("Empty Trash","This will permanently delete "+list.length+" record(s). This cannot be undone. Continue?",{danger:true,okText:"Delete all forever"});
+    if(!ok) return;
+    for(const e of list) await Storage.del("entries",e.id);
+    state.entries=state.entries.filter(e=>!e.deleted);
+    toast("Trash emptied");
+    render();
+  };
+  v.querySelectorAll("[data-restore]").forEach(b=>{
+    b.onclick=async ()=>{ await restoreEntry(b.getAttribute("data-restore")); toast("Restored"); render(); };
+  });
+  v.querySelectorAll("[data-purge]").forEach(b=>{
+    b.onclick=async ()=>{
+      const ok=await confirmDialog("Delete Forever","Permanently delete this record? This cannot be undone.",{danger:true,okText:"Delete forever"});
+      if(!ok) return;
+      await purgeEntry(b.getAttribute("data-purge")); toast("Permanently deleted"); render();
+    };
+  });
+}
+
+/* ---- Search ---- */
+function renderSearch(v){
+  const q=state.searchQuery.trim().toLowerCase();
+  let html='<div class="page-title">Search</div>';
+  if(!q){
+    html+='<div class="empty"><div class="big">⌕</div><p>Search title, thoughts, takeaway, category and tags.</p></div>';
+    v.innerHTML=html; return;
+  }
+  const list=activeEntries().filter(e=>
+    (e.title||"").toLowerCase().includes(q) ||
+    (e.content||"").toLowerCase().includes(q) ||
+    (e.summary||"").toLowerCase().includes(q) ||
+    (e.category||"").toLowerCase().includes(q) ||
+    e.tags.some(t=>t.toLowerCase().includes(q))
+  ).sort((a,b)=>b.date>a.date?1:-1);
+  html+='<div class="page-desc">"'+escapeHtml(state.searchQuery)+'" · '+list.length+' record'+(list.length===1?"":"s")+' found</div>';
+  if(!list.length){
+    html+='<div class="empty"><div class="big">⌕</div><p>No matching records. Try another keyword.</p></div>';
+  }else{
+    html+='<div class="entry-grid">'+list.map(e=>entryCard(e,state.searchQuery.trim())).join("")+'</div>';
+  }
+  v.innerHTML=html;
+  bindEntryCards(v);
+}
+
+/* ---- Detail ---- */
+function renderDetail(v){
+  const e=entryById(state.detailId);
+  if(!e){ go("home"); return; }
+  let html='<div style="margin-bottom:16px"><button class="btn btn-ghost btn-sm" id="back-btn">← Back</button></div>'+
+    '<div class="card detail-card">'+
+    '<div class="detail-title">'+escapeHtml(e.title||"(Untitled)")+'</div>'+
+    '<div class="detail-meta">'+
+      '<span>📅 '+escapeHtml(e.date)+'</span>'+
+      (e.category?'<span class="chip">'+escapeHtml(e.category)+'</span>':"")+
+      e.tags.map(t=>'<span class="tag">#'+escapeHtml(t)+'</span>').join("")+
+      (safeHttpUrl(e.link)?' · <a href="'+escapeHtml(safeHttpUrl(e.link))+'" target="_blank" rel="noopener noreferrer">Related link ↗</a>':"")+
+      '<span style="margin-left:auto;font-size:12px">Updated '+fmtTime(e.updatedAt)+'</span>'+
+    '</div>'+
+    (e.summary?'<div class="detail-block"><div class="blabel">TODAY\'S TAKEAWAY</div><div class="summary-box">'+escapeHtml(e.summary)+'</div></div>':"")+
+    '<div class="detail-block"><div class="blabel">THOUGHTS</div><div class="md-body">'+renderMarkdown(e.content)+'</div></div>'+
+    '<div class="detail-actions">'+
+      '<button class="btn '+(e.favorite?"btn-accent":"btn-ghost")+'" id="d-fav">'+(e.favorite?"★ Favorited":"☆ Favorite")+'</button>'+
+      '<button class="btn btn-primary" id="d-edit">Edit</button>'+
+      '<button class="btn btn-ghost" id="d-read">Reading Mode</button>'+
+      '<button class="btn btn-danger" id="d-del" style="margin-left:auto">Delete</button>'+
+    '</div></div>';
+  v.innerHTML=html;
+  $("#back-btn").onclick=()=>go("home");
+  $("#d-fav").onclick=async ()=>{ await toggleFavorite(e.id); render(); };
+  $("#d-edit").onclick=()=>go("editor",e.id);
+  $("#d-read").onclick=()=>openReading(e);
+  $("#d-del").onclick=async ()=>{
+    const ok=await confirmDialog("Delete Record",'"'+(e.title||"Untitled")+'" will be moved to Trash and can be restored anytime.',{danger:true,okText:"Move to Trash"});
+    if(!ok) return;
+    await softDelete(e.id);
+    toast("Moved to Trash");
+    go("home");
+  };
+}
+
+function openReading(e){
+  const ov=document.createElement("div");
+  ov.className="reading-overlay";
+  ov.innerHTML='<button class="reading-close">✕</button>'+
+    '<div class="reading-inner"><h1>'+escapeHtml(e.title||"(Untitled)")+'</h1>'+
+    '<div class="rmeta">'+escapeHtml(e.date)+
+    (e.category?" · "+escapeHtml(e.category):"")+
+    (e.tags.length?" · "+e.tags.map(t=>"#"+escapeHtml(t)).join(" "):"")+'</div>'+
+    (e.summary?'<div class="summary-box" style="margin-bottom:30px">'+escapeHtml(e.summary)+'</div>':"")+
+    '<div class="md-body">'+renderMarkdown(e.content)+'</div></div>';
+  document.body.appendChild(ov);
+  const close=()=>{ ov.remove(); document.removeEventListener("keydown",onKey); };
+  ov.querySelector(".reading-close").onclick=close;
+  function onKey(ev){ if(ev.key==="Escape") close(); }
+  document.addEventListener("keydown",onKey);
+}
+
+/* ---- Editor ---- */
+const DRAFT_KEY="fk_draft";
+function renderEditor(v){
+  const editing=state.editingId?entryById(state.editingId):null;
+  let draft=null;
+  if(!editing){
+    try{ draft=JSON.parse(localStorage.getItem(DRAFT_KEY)||"null"); }catch(e){}
+  }
+  const init={
+    date:     editing?editing.date    :(draft&&draft.date)||todayStr(),
+    title:    editing?editing.title   :(draft&&draft.title)||"",
+    category: editing?editing.category:(draft&&draft.category)||"",
+    tags:     editing?editing.tags.slice():(draft&&Array.isArray(draft.tags)?draft.tags:[]),
+    link:     editing?(editing.link||""):(draft&&draft.link)||"",
+    content:  editing?editing.content :(draft&&draft.content)||"",
+    summary:  editing?editing.summary :(draft&&draft.summary)||""
+  };
+  const catOptions=state.categories.map(c=>'<option value="'+escapeHtml(c.name)+'">').join("");
+  let html=
+    '<div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+      '<button class="btn btn-ghost btn-sm" id="ed-back">← Back</button>'+
+      '<span style="font-weight:600">'+(editing?"Edit Record":"Record Today's Takeaway")+'</span>'+
+      (draft&&!editing?'<span style="font-size:12px;color:var(--accent)">Draft restored from last unsaved session</span>':"")+
+    '</div>'+
+    '<div class="card editor-card">'+
+    '<div class="field-row">'+
+      '<div class="field"><label>Date</label><input type="date" id="f-date" value="'+escapeHtml(init.date)+'"></div>'+
+      '<div class="field" style="flex:2"><label>Title</label><input type="text" id="f-title" placeholder="One-line summary, e.g. Supply chain risk judgment" value="'+escapeHtml(init.title)+'"></div>'+
+    '</div>'+
+    '<div class="field-row">'+
+      '<div class="field"><label>Category</label>'+
+        '<input type="text" id="f-category" list="cat-list" placeholder="Pick or type a new one" value="'+escapeHtml(init.category)+'">'+
+        '<datalist id="cat-list">'+catOptions+'</datalist>'+
+        '<div class="recent-cats" id="recent-cats"></div>'+
+      '</div>'+
+      '<div class="field"><label>Link (optional)</label><input type="url" id="f-link" placeholder="https://…" value="'+escapeHtml(init.link)+'"></div>'+
+    '</div>'+
+    '<div class="field"><label>Tags (Enter or comma to add)</label>'+
+      '<div class="tags-input" id="tags-box"><input type="text" id="f-tag-input" placeholder="e.g. supply-chain, contract, risk"></div>'+
+    '</div>'+
+    '<div class="field"><label>Today\'s Takeaway</label>'+
+      '<textarea id="f-summary" style="min-height:70px" placeholder="The one-line lesson: what will you do differently next time?">'+escapeHtml(init.summary)+'</textarea>'+
+    '</div>'+
+    '<div class="field"><label>Thoughts (Markdown supported)</label>'+
+      '<div class="md-toolbar">'+
+        '<button data-md="bold"><b>B</b> Bold</button>'+
+        '<button data-md="h">H Heading</button>'+
+        '<button data-md="ul">• List</button>'+
+        '<button data-md="quote">❝ Quote</button>'+
+        '<button data-md="code">{ } Code</button>'+
+        '<button data-md="link">🔗 Link</button>'+
+        '<span style="flex:1"></span>'+
+        '<button data-md="preview">👁 Preview</button>'+
+      '</div>'+
+      '<textarea id="f-content" placeholder="Your thinking, reasoning, how you handled it…">'+escapeHtml(init.content)+'</textarea>'+
+      '<div class="md-preview md-body" id="md-preview" style="display:none"></div>'+
+      '<div class="hint">Supports **bold**, # heading, - list, > quote, `code`, [link](url) · Ctrl+Enter to save</div>'+
+    '</div>'+
+    '<div class="editor-actions">'+
+      '<button class="btn btn-accent" id="f-save">Save (Ctrl+Enter)</button>'+
+      '<button class="btn btn-ghost" id="f-cancel">Cancel</button>'+
+      '<span class="draft-tip" id="draft-tip"></span>'+
+    '</div></div>';
+  v.innerHTML=html;
+
+  /* Tags input */
+  const tagsBox=$("#tags-box"), tagInput=$("#f-tag-input");
+  function drawTags(){
+    tagsBox.querySelectorAll(".tag").forEach(t=>t.remove());
+    init.tags.forEach((t,i)=>{
+      const el=document.createElement("span");
+      el.className="tag";
+      el.innerHTML="#"+escapeHtml(t)+' <span class="rm" data-i="'+i+'">×</span>';
+      tagsBox.insertBefore(el,tagInput);
+    });
+    tagsBox.querySelectorAll(".rm").forEach(r=>r.onclick=()=>{ init.tags.splice(+r.getAttribute("data-i"),1); drawTags(); });
+  }
+  drawTags();
+  tagsBox.onclick=()=>tagInput.focus();
+  tagInput.addEventListener("keydown",e=>{
+    if(e.key==="Enter"||e.key===","){
+      e.preventDefault();
+      const t=tagInput.value.trim().replace(/,/g,"");
+      if(t&&!init.tags.includes(t)) init.tags.push(t);
+      tagInput.value=""; drawTags();
+    }else if(e.key==="Backspace"&&!tagInput.value&&init.tags.length){
+      init.tags.pop(); drawTags();
+    }
+  });
+  tagInput.addEventListener("blur",()=>{
+    const t=tagInput.value.trim().replace(/,/g,"");
+    if(t&&!init.tags.includes(t)){ init.tags.push(t); tagInput.value=""; drawTags(); }
+  });
+
+  /* Recent categories */
+  const rcBox=$("#recent-cats");
+  const rc=state.meta.recentCats||[];
+  rcBox.innerHTML = rc.length
+    ? '<span style="font-size:11.5px;color:var(--muted)">Recent:</span>'+rc.map(c=>'<span class="chip" data-rc="'+escapeHtml(c)+'">'+escapeHtml(c)+'</span>').join("")
+    : "";
+  rcBox.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{ $("#f-category").value=b.getAttribute("data-rc"); });
+
+  /* Markdown toolbar */
+  const content=$("#f-content"), preview=$("#md-preview");
+  let previewOn=false;
+  v.querySelectorAll("[data-md]").forEach(b=>{
+    b.onclick=()=>{
+      const act=b.getAttribute("data-md");
+      const s=content.selectionStart, en=content.selectionEnd;
+      const sel=content.value.slice(s,en);
+      function wrap(before,after,ph){
+        const text=sel||ph;
+        content.value=content.value.slice(0,s)+before+text+after+content.value.slice(en);
+        content.focus();
+        content.selectionStart=s+before.length;
+        content.selectionEnd=s+before.length+text.length;
+      }
+      switch(act){
+        case "bold":  wrap("**","**","important"); break;
+        case "h":     wrap("## ","","Section"); break;
+        case "ul":    wrap("- ","","Point"); break;
+        case "quote": wrap("> ","","Quote"); break;
+        case "code":  wrap("`","`","code"); break;
+        case "link":  wrap("[","](https://)","text"); break;
+        case "preview":
+          previewOn=!previewOn;
+          if(previewOn){ preview.innerHTML=renderMarkdown(content.value)||'<span style="color:var(--muted)">(Nothing yet)</span>'; preview.style.display="block"; content.style.display="none"; b.textContent="✎ Edit"; }
+          else{ preview.style.display="none"; content.style.display="block"; b.textContent="👁 Preview"; content.focus(); }
+          break;
+      }
+    };
+  });
+
+  /* Draft autosave (new records only) */
+  const draftTip=$("#draft-tip");
+  const saveDraft=debounce(()=>{
+    if(editing) return;
+    const d={
+      date:$("#f-date").value, title:$("#f-title").value,
+      category:$("#f-category").value, tags:init.tags,
+      link:$("#f-link").value, summary:$("#f-summary").value, content:content.value
+    };
+    if(d.title||d.content||d.summary){
+      localStorage.setItem(DRAFT_KEY,JSON.stringify(d));
+      draftTip.textContent="Draft autosaved "+fmtTime(Date.now()).slice(11);
+    }
+  },600);
+  ["#f-date","#f-title","#f-category","#f-link","#f-summary"].forEach(s=>$(s).addEventListener("input",saveDraft));
+  content.addEventListener("input",()=>{ saveDraft(); if(previewOn) preview.innerHTML=renderMarkdown(content.value); });
+
+  /* Save */
+  async function doSave(){
+    const title=$("#f-title").value.trim();
+    // Title is optional; a record just needs ANY content to be worth saving
+    if(!title && !$("#f-summary").value.trim() && !content.value.trim()){
+      toast("Nothing to save yet — write a takeaway or some thoughts",true);
+      return;
+    }
+    const data={
+      date:$("#f-date").value||todayStr(),
+      title:title,
+      category:$("#f-category").value.trim(),
+      tags:init.tags.slice(),
+      link:$("#f-link").value.trim(),
+      summary:$("#f-summary").value.trim(),
+      content:content.value
+    };
+    try{
+      if(editing) data.id=editing.id;
+      const saved=await saveEntry(data);
+      if(!editing) localStorage.removeItem(DRAFT_KEY);
+      toast(editing?"Changes saved":"Record saved");
+      go("detail",saved.id);
+    }catch(err){
+      toast("Save failed: "+err.message,true);
+    }
+  }
+  $("#f-save").onclick=doSave;
+  $("#f-cancel").onclick=()=>go(editing?"detail":"home",editing?editing.id:undefined);
+  $("#ed-back").onclick=()=>go(editing?"detail":"home",editing?editing.id:undefined);
+  state._saveHandler=doSave;
+}
+
+/* ---- Settings ---- */
+function renderSettings(v){
+  const hasLock=!!state.meta.lockHash;
+  const syncText=Storage.lastSyncAt
+    ? "Last synced "+fmtTime(Storage.lastSyncAt)
+    : "Not synced yet. Your records are still saved on this iPhone.";
+
+  let html='<div class="page-title">Settings</div><div class="page-desc">Offline storage, sync, backup, and privacy.</div>';
+
+  html+='<div class="card set-block"><h3>Local Data and Backup</h3>'+
+    '<p><b>Records are always saved on this device first.</b> Export a portable .dwr backup regularly. Backup files are not encrypted.</p>'+
+    '<div class="set-row">'+
+      '<button class="btn btn-primary" id="set-export">Export Backup</button>'+
+      '<button class="btn btn-ghost" id="set-import">Import Backup</button>'+
+      '<input type="file" id="import-file" accept=".dwr,.json,application/json" style="display:none">'+
+      '<span style="font-size:12px;color:var(--muted)">'+
+        (state.meta.lastBackupAt?"Last backup: "+fmtTime(state.meta.lastBackupAt):"No backup exported yet")+
+      '</span>'+
+    '</div></div>';
+
+  html+='<div class="card set-block"><h3>LAN Sync</h3>'+
+    '<p>The app works offline. When the computer is online on the same Wi-Fi, newer changes merge automatically.</p>'+
+    '<div class="set-row"><button class="btn btn-primary btn-sm" id="sync-now">Sync Now</button>'+
+    '<span id="sync-status" style="font-size:13px;color:var(--ink-soft)">'+escapeHtml(syncText)+'</span></div></div>';
+
+  html+='<div class="card set-block"><h3>Screen Lock (not encryption)</h3>'+
+    '<p>This deters casual access but does not encrypt IndexedDB or backup files. Use a device passcode and keep backups private.</p>'+
+    (hasLock
+      ? '<div class="set-row"><span style="color:var(--accent);font-size:13px">Password protection is on</span>'+
+        '<button class="btn btn-ghost btn-sm" id="lock-change">Change Password</button>'+
+        '<button class="btn btn-danger btn-sm" id="lock-remove">Turn Off</button></div>'
+      : '<div class="set-row"><input type="password" id="lock-new" placeholder="Set a password (minimum 4 characters)">'+
+        '<button class="btn btn-primary btn-sm" id="lock-set">Enable</button></div>')+
+    '</div>';
+
+  html+='<div class="card set-block"><h3>Privacy Note</h3>'+
+    '<p>Use this app for thoughts, decisions, lessons, and methods. <b>Do not</b> store client data, case files, contract text, or confidential material.</p></div>';
+
+  v.innerHTML=html;
+  $("#set-export").onclick=()=>exportData();
+  $("#set-import").onclick=()=>$("#import-file").click();
+  $("#import-file").addEventListener("change",onImportFile);
+  $("#sync-now").onclick=async ()=>{
+    const status=$("#sync-status");
+    status.textContent="Syncing…";
+    await syncNow(false);
+    status.textContent=Storage.lastSyncAt?"Last synced "+fmtTime(Storage.lastSyncAt):"Computer unavailable. Records remain saved on this iPhone.";
+  };
+
+  if(hasLock){
+    $("#lock-change").onclick=async ()=>{
+      const p1=prompt("New password (minimum 4 characters):");
+      if(!p1) return;
+      if(p1.length<4){ toast("Password must be at least 4 characters",true); return; }
+      state.meta.lockHash=await hashStr(p1); await saveMeta("lockHash"); toast("Password updated");
+    };
+    $("#lock-remove").onclick=async ()=>{
+      const ok=await confirmDialog("Turn Off Protection","Anyone using this device will be able to open your records. Continue?",{danger:true,okText:"Turn Off"});
+      if(!ok) return;
+      state.meta.lockHash=""; await saveMeta("lockHash"); toast("Password protection is off"); render();
+    };
+  }else{
+    $("#lock-set").onclick=async ()=>{
+      const password=$("#lock-new").value;
+      if(password.length<4){ toast("Password must be at least 4 characters",true); return; }
+      state.meta.lockHash=await hashStr(password); await saveMeta("lockHash"); toast("Password protection enabled"); render();
+    };
+  }
+}
+/* ---------------- 7. Import / Export ---------------- */
+async function exportData(){
+  const payload={
+    app:"DailyWorkRecord",
+    version:1,
+    exportedAt:new Date().toISOString(),
+    categories:state.categories.map(c=>c.name),
+    entries:activeEntries().map(e=>({
+      id:e.id, date:e.date, title:e.title, category:e.category, tags:e.tags,
+      content:e.content, summary:e.summary, favorite:e.favorite, link:e.link||"",
+      createdAt:e.createdAt, updatedAt:e.updatedAt
+    }))
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const d=new Date();
+  a.download="work-experience-library-"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+".dwr";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  state.meta.lastBackupAt=Date.now();
+  await saveMeta("lastBackupAt");
+  toast("Backup exported");
+}
+
+function onImportFile(ev){
+  const file=ev.target.files[0];
+  ev.target.value="";
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async ()=>{
+    let data;
+    try{ data=JSON.parse(reader.result); }
+    catch(e){ toast("Import failed: not a valid JSON file",true); return; }
+    if(!data||!Array.isArray(data.entries)){ toast("Import failed: bad format (missing entries)",true); return; }
+    const valid=[], skipped=[];
+    data.entries.forEach(r=>{
+      if(!r||typeof r!=="object"||(!r.title&&!r.content&&!r.summary)){ skipped.push(r); return; }
+      valid.push({
+        id:(typeof r.id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(r.id))?r.id:uid(),
+        date:/^\d{4}-\d{2}-\d{2}$/.test(r.date)?r.date:todayStr(),
+        title:String(r.title||""),
+        category:String(r.category||""),
+        tags:Array.isArray(r.tags)?r.tags.map(String):[],
+        content:String(r.content||""),
+        summary:String(r.summary||""),
+        favorite:!!r.favorite,
+        link:String(r.link||""),
+        createdAt:+r.createdAt||Date.now(),
+        updatedAt:+r.updatedAt||Date.now(),
+        deleted:false
+      });
+    });
+    const choice=await confirmDialog(
+      "Import Data",
+      "Found "+valid.length+" valid record(s)"+(skipped.length?" ("+skipped.length+" invalid skipped)":"")+".\n\nOverwrite = erase ALL current data, then import.\nMerge = keep current data, add new ones (same IDs skipped).",
+      {okText:"Overwrite",third:"Merge"}
+    );
+    if(choice===false){ toast("Import cancelled"); return; }
+    try{
+      if(choice===true){
+        await Storage.clear("entries");
+        state.entries=[];
+        for(const e of valid){ state.entries.push(e); await Storage.put("entries",e); }
+      }else{
+        const exist=new Set(state.entries.map(e=>e.id));
+        let added=0;
+        for(const e of valid){
+          if(exist.has(e.id)) continue;
+          state.entries.push(e); await Storage.put("entries",e); added++;
+        }
+        toast("Merged: "+added+" new record(s)");
+      }
+      if(Array.isArray(data.categories)){
+        for(const name of data.categories){
+          const n=String(name).trim();
+          if(n&&!state.categories.find(c=>c.name===n)){
+            const c={name:n,createdAt:Date.now()};
+            state.categories.push(c); await Storage.put("categories",c);
+          }
+        }
+      }
+      state.meta.lastBackupAt=Date.now(); await saveMeta("lastBackupAt");
+      if(choice===true) toast("Imported "+valid.length+" record(s)");
+      go("home");
+    }catch(err){
+      toast("Import error: "+err.message,true);
+    }
+  };
+  reader.onerror=()=>toast("Failed to read file",true);
+  reader.readAsText(file);
+}
+
+/* ---------------- 8. Password lock ---------------- */
+async function checkLock(){
+  if(!state.meta.lockHash){ $("#app").style.visibility="visible"; return; }
+  $("#lock-screen").style.display="flex";
+  const input=$("#lock-input");
+  input.focus();
+  async function tryUnlock(){
+    const h=await hashStr(input.value);
+    if(h===state.meta.lockHash){
+      $("#lock-screen").style.display="none";
+      $("#app").style.visibility="visible";
+    }else{
+      $("#lock-err").textContent="Wrong password, try again";
+      input.value=""; input.focus();
+    }
+  }
+  $("#lock-btn").onclick=tryUnlock;
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter") tryUnlock(); });
+}
+
+/* ---------------- 9. Global events & boot ---------------- */
+function bindGlobal(){
+  $("#btn-new-top").onclick=()=>go("editor");
+  const gs=$("#global-search");
+  gs.addEventListener("input",debounce(()=>{
+    state.searchQuery=gs.value;
+    if(state.view!=="search"&&gs.value.trim()){ state.view="search"; }
+    if(state.view==="search"){ renderNav(); renderSearch($("#view")); }
+    if(!gs.value.trim()&&state.view==="search"){ go("home"); }
+  },250));
+  gs.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){
+      state.searchQuery=gs.value;
+      state.view="search"; render();
+    }
+  });
+  document.addEventListener("keydown",e=>{
+    if($("#lock-screen").style.display==="flex") return;
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="n"){
+      e.preventDefault(); go("editor");
+    }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="f"){
+      e.preventDefault(); gs.focus(); gs.select();
+    }
+    if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){
+      if(state.view==="editor"&&state._saveHandler){ e.preventDefault(); state._saveHandler(); }
+    }
+  });
+  window.addEventListener("beforeunload",e=>{
+    if(state.view==="editor"){
+      const t=$("#f-title"), c=$("#f-content");
+      if((t&&t.value)||(c&&c.value)){ e.preventDefault(); e.returnValue=""; }
+    }
+  });
+}
+
+let syncTimer=null;
+function queueSync(){
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>syncNow(true),1200);
+}
+async function syncNow(silent){
+  try{
+    const changed=await Storage.sync();
+    if(changed){
+      await loadAll();
+      if(state.view!=="editor") render();
+      if(!silent) toast("Synced with the computer");
+    }
+  }catch(e){
+    if(!silent) toast("Computer unavailable. Data remains saved on this iPhone.",false);
+  }
+}
+
+(async function init(){
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("service worker",e));
+  }
+  await Storage.open();
+  try{ await Storage.sync(); }catch(e){ console.info("LAN offline; using local data"); }
+  await loadAll();
+  bindGlobal();
+  render();
+  await checkLock();
+  window.addEventListener("online",()=>syncNow(true));
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) syncNow(true); });
+  setInterval(()=>syncNow(true),30000);
+})();
+</script>
+</body>
+</html>

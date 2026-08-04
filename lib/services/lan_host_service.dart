@@ -1,0 +1,360 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
+import 'package:flutter/services.dart';
+
+import 'local_certificate_service.dart';
+
+typedef StoreReader = List<Map<String, dynamic>> Function(String store);
+typedef StoreWriter = Future<void> Function(
+    String store, Map<String, dynamic> value);
+typedef StoreDelete = Future<void> Function(String store, String key);
+typedef StoreClear = Future<void> Function(String store);
+
+class LanHostService {
+  LanHostService(
+      {required this.token,
+      required this.readStore,
+      required this.writeStore,
+      required this.deleteStoreValue,
+      required this.clearStore,
+      this.port = 8732,
+      this.setupPort = 8731});
+  final String token;
+  final StoreReader readStore;
+  final StoreWriter writeStore;
+  final StoreDelete deleteStoreValue;
+  final StoreClear clearStore;
+  final int port, setupPort;
+  HttpServer? _server, _setupServer;
+  String _html = '', _manifest = '', _serviceWorker = '';
+  List<int> _icon = const [], _rootCertificate = const [];
+  final Map<String, List<int>> _pairFailures = {}, _authFailures = {};
+  String? address, setupAddress;
+  String pairingCode = '';
+  bool get running => _server != null;
+
+  Future<String> start() async {
+    if (_server != null) return address!;
+    _html = await rootBundle.loadString('assets/pwa/index.html');
+    _manifest = await rootBundle.loadString('assets/pwa/manifest.webmanifest');
+    _serviceWorker = await rootBundle.loadString('assets/pwa/sw.js');
+    final icon = await rootBundle.load('assets/pwa/pwa-icon.png');
+    _icon = icon.buffer.asUint8List(icon.offsetInBytes, icon.lengthInBytes);
+    pairingCode = Random.secure().nextInt(100000000).toString().padLeft(8, '0');
+    final ip = await _findLanAddress();
+    final certificateService = LocalCertificateService();
+    final cert = await certificateService.prepare(ip);
+    _rootCertificate = await File(cert.rootCertificatePath).readAsBytes();
+    final context = SecurityContext(withTrustedRoots: false);
+    try {
+      context.useCertificateChain(cert.pfxPath, password: cert.pfxPassword);
+      context.usePrivateKey(cert.pfxPath, password: cert.pfxPassword);
+    } finally {
+      final pfx = File(cert.pfxPath);
+      if (await pfx.exists()) await pfx.delete();
+      await certificateService.cleanupServerCertificates();
+    }
+    _server =
+        await HttpServer.bindSecure(InternetAddress.anyIPv4, port, context);
+    _server!.listen((r) => unawaited(_handleSecure(r)));
+    _setupServer = await HttpServer.bind(InternetAddress.anyIPv4, setupPort);
+    _setupServer!.listen((r) => unawaited(_handleSetup(r, ip)));
+    address = 'https://$ip:$port/pair';
+    setupAddress = 'http://$ip:$setupPort/setup';
+    return address!;
+  }
+
+  Future<void> stop() async {
+    final secure = _server, setup = _setupServer;
+    _server = null;
+    _setupServer = null;
+    address = null;
+    setupAddress = null;
+    pairingCode = '';
+    _pairFailures.clear();
+    _authFailures.clear();
+    await Future.wait([
+      secure?.close(force: true) ?? Future.value(),
+      setup?.close(force: true) ?? Future.value()
+    ]);
+  }
+
+  Future<void> _handleSetup(HttpRequest r, String ip) async {
+    try {
+      if (r.method == 'GET' && r.uri.path == '/work-experience-root.cer') {
+        _applyHeaders(r.response);
+        r.response.headers.contentType =
+            ContentType('application', 'x-x509-ca-cert');
+        r.response.headers.set('content-disposition',
+            'attachment; filename="work-experience-root.cer"');
+        r.response.add(_rootCertificate);
+        return r.response.close();
+      }
+      if (r.method != 'GET' || r.uri.path != '/setup')
+        return _json(r, {'error': 'not found'}, status: 404);
+      final certUrl = 'http://$ip:$setupPort/work-experience-root.cer';
+      final pairUrl = 'https://$ip:$port/pair';
+      final page =
+          '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Work Experience Library Setup</title><style>body{font-family:-apple-system,sans-serif;max-width:680px;margin:0 auto;padding:28px 22px;color:#202838;line-height:1.7}.card{border:1px solid #ddd6c8;border-radius:14px;padding:18px;margin:16px 0}a{display:block;text-align:center;background:#1b2740;color:white;padding:12px;border-radius:10px;text-decoration:none;margin:12px 0}.muted{color:#6f7784;font-size:13px}</style></head><body><h1>Work Experience Library · iPhone Setup</h1><div class="card"><b>Step 1: Install the dedicated certificate</b><a href="$certUrl">Download Certificate</a><p>Open Settings &gt; Profile Downloaded and install it. Then go to Settings &gt; General &gt; About &gt; Certificate Trust Settings and enable full trust for <b>Work Experience Library Local Root</b>.</p></div><div class="card"><b>Step 2: Pair securely over HTTPS</b><a href="$pairUrl">Open Secure Pairing</a><p>Enter the 8-digit pairing code shown in the desktop app, then use Safari Share &gt; Add to Home Screen.</p></div><p class="muted">The HTTP setup page contains no sync key or private data. The profile contains only the public root certificate and no MDM, VPN, account, or device-management settings.</p></body></html>''';
+      return _text(r, page, type: ContentType.html);
+    } catch (e) {
+      try {
+        await _json(r, {'error': 'setup failed'}, status: 500);
+      } catch (_) {
+        await r.response.close();
+      }
+    }
+  }
+
+  String get _pairPage =>
+      '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Secure Pairing</title><style>body{font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:38px 22px;color:#202838}.card{border:1px solid #ddd6c8;border-radius:14px;padding:22px}input,button{box-sizing:border-box;width:100%;padding:13px;margin-top:12px;border-radius:9px;font-size:17px}input{border:1px solid #ccc;letter-spacing:4px;text-align:center}button{border:0;background:#1b2740;color:#fff}#msg{min-height:24px;color:#a33;margin-top:12px}</style></head><body><div class="card"><h2>Secure Pairing</h2><p>Enter the 8-digit code displayed in the desktop app.</p><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code"><button id="pair">Pair This iPhone</button><div id="msg"></div></div><script>document.getElementById('pair').onclick=async()=>{const m=document.getElementById('msg');m.textContent='Pairing…';try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('code').value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Pairing failed');localStorage.setItem('fk_key',d.token);location.replace('/')}catch(e){m.textContent=e.message}}</script></body></html>''';
+
+  Future<void> _handleSecure(HttpRequest r) async {
+    try {
+      final path = r.uri.path;
+      if (r.method == 'GET' && path == '/pair')
+        return _text(r, _pairPage, type: ContentType.html);
+      if (r.method == 'POST' && path == '/api/pair') return _pair(r);
+      if (r.method == 'GET' && (path == '/' || path == '/index.html')) {
+        if (!_pageAuthorized(r))
+          return _text(r,
+              '<h3>Pairing required</h3><p><a href="/pair">Open secure pairing</a></p>',
+              status: 401, type: ContentType.html);
+        return _text(r, _html, type: ContentType.html);
+      }
+      if (r.method == 'GET' && path == '/app-shell')
+        return _text(r, _html, type: ContentType.html);
+      if (r.method == 'GET' && path == '/sw.js') {
+        r.response.headers.set('Service-Worker-Allowed', '/');
+        return _text(r, _serviceWorker,
+            type: ContentType('application', 'javascript', charset: 'utf-8'));
+      }
+      if (r.method == 'GET' && path == '/manifest.webmanifest') {
+        if (!_pageAuthorized(r))
+          return _json(r, {'error': 'unauthorized'}, status: 403);
+        return _text(r, _manifest,
+            type:
+                ContentType('application', 'manifest+json', charset: 'utf-8'));
+      }
+      if (r.method == 'GET' && path == '/pwa-icon.png') {
+        _applyHeaders(r.response);
+        r.response.headers.contentType = ContentType('image', 'png');
+        r.response.add(_icon);
+        return r.response.close();
+      }
+      if (!path.startsWith('/api/'))
+        return _json(r, {'error': 'not found'}, status: 404);
+      final remote = r.connectionInfo?.remoteAddress.address ?? 'unknown';
+      if (!_allowed(_authFailures, remote, 10, const Duration(minutes: 1)))
+        return _json(r, {'error': 'too many attempts'}, status: 429);
+      if (!_constantTime(r.headers.value('X-Key') ?? '', token)) {
+        _recordFailure(_authFailures, remote);
+        return _json(r, {'error': 'unauthorized'}, status: 403);
+      }
+      _authFailures.remove(remote);
+      if (r.method == 'GET' && path == '/api/ping')
+        return _json(
+            r, {'ok': true, 'time': DateTime.now().millisecondsSinceEpoch});
+      if (r.method == 'POST' && path == '/api/sync') return _sync(r);
+      final s = r.uri.pathSegments;
+      if (s.length >= 3 &&
+          s[0] == 'api' &&
+          s[1] == 'store' &&
+          _validStore(s[2])) {
+        final store = s[2];
+        if (r.method == 'GET' && s.length == 3)
+          return _json(r, readStore(store));
+        if (r.method == 'PUT' && s.length == 3) {
+          final b = await _readJson(r);
+          if (b is! Map)
+            return _json(r, {'error': 'invalid body'}, status: 400);
+          await writeStore(store, Map<String, dynamic>.from(b));
+          return _json(r, {'ok': true});
+        }
+        if (r.method == 'DELETE' && s.length == 4) {
+          await deleteStoreValue(store, s[3]);
+          return _json(r, {'ok': true});
+        }
+        if (r.method == 'POST' && s.length == 4 && s[3] == 'clear') {
+          await clearStore(store);
+          return _json(r, {'ok': true});
+        }
+      }
+      return _json(r, {'error': 'not found'}, status: 404);
+    } catch (e) {
+      try {
+        await _json(r, {'error': 'request failed'}, status: 500);
+      } catch (_) {
+        await r.response.close();
+      }
+    }
+  }
+
+  Future<void> _pair(HttpRequest r) async {
+    final remote = r.connectionInfo?.remoteAddress.address ?? 'unknown';
+    if (!_allowed(_pairFailures, remote, 5, const Duration(minutes: 5)))
+      return _json(r, {'error': 'Too many attempts. Wait five minutes.'},
+          status: 429);
+    final body = await _readJson(r);
+    final code = body is Map ? body['code']?.toString().trim() ?? '' : '';
+    if (!_constantTime(code, pairingCode)) {
+      _recordFailure(_pairFailures, remote);
+      return _json(r, {'error': 'Incorrect pairing code'}, status: 403);
+    }
+    _pairFailures.remove(remote);
+    r.response.cookies.add(Cookie('fk_session', token)
+      ..httpOnly = true
+      ..secure = true
+      ..sameSite = SameSite.strict
+      ..path = '/'
+      ..maxAge = 31536000);
+    return _json(r, {'ok': true, 'token': token});
+  }
+
+  bool _pageAuthorized(HttpRequest r) => r.cookies
+      .any((c) => c.name == 'fk_session' && _constantTime(c.value, token));
+  bool _constantTime(String a, String b) {
+    var diff = a.length ^ b.length;
+    final length = max(a.length, b.length);
+    for (var i = 0; i < length; i++) {
+      diff |= (i < a.length ? a.codeUnitAt(i) : 0) ^
+          (i < b.length ? b.codeUnitAt(i) : 0);
+    }
+    return diff == 0;
+  }
+
+  void _recordFailure(Map<String, List<int>> values, String remote) => values
+      .putIfAbsent(remote, () => [])
+      .add(DateTime.now().millisecondsSinceEpoch);
+  bool _allowed(Map<String, List<int>> values, String remote, int maxAttempts,
+      Duration window) {
+    final cutoff = DateTime.now().subtract(window).millisecondsSinceEpoch;
+    final list = values.putIfAbsent(remote, () => [])
+      ..removeWhere((v) => v < cutoff);
+    return list.length < maxAttempts;
+  }
+
+  Future<void> _sync(HttpRequest r) async {
+    final body = await _readJson(r);
+    if (body is! Map) return _json(r, {'error': 'invalid body'}, status: 400);
+    final current = <String, Map<String, dynamic>>{
+      for (final e in readStore('entries'))
+        if ((e['id']?.toString() ?? '').isNotEmpty) e['id'].toString(): e
+    };
+    if (body['entries'] is List) {
+      for (final raw in (body['entries'] as List).whereType<Map>()) {
+        final e = Map<String, dynamic>.from(raw),
+            id = raw['id']?.toString() ?? '';
+        if (id.isNotEmpty &&
+            (current[id] == null || _version(e) > _version(current[id]!))) {
+          await writeStore('entries', e);
+          current[id] = e;
+        }
+      }
+    }
+    final names = readStore('categories')
+        .map((e) => e['name']?.toString() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    if (body['categories'] is List) {
+      for (final raw in body['categories'] as List) {
+        final name = (raw is Map ? raw['name'] : raw)?.toString().trim() ?? '';
+        if (name.isNotEmpty && names.add(name))
+          await writeStore('categories', {
+            'name': name,
+            'createdAt': DateTime.now().millisecondsSinceEpoch
+          });
+      }
+    }
+    return _json(r, {
+      'entries': readStore('entries'),
+      'categories': readStore('categories'),
+      'serverTime': DateTime.now().millisecondsSinceEpoch
+    });
+  }
+
+  int _version(Map<String, dynamic> e) {
+    int p(Object? v) =>
+        v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+    final a = p(e['updatedAt']), b = p(e['deletedAt']);
+    return a > b ? a : b;
+  }
+
+  bool _validStore(String v) => v == 'entries' || v == 'categories';
+  Future<Object?> _readJson(HttpRequest r) async {
+    final bytes = <int>[];
+    await for (final chunk in r) {
+      bytes.addAll(chunk);
+      if (bytes.length > 20 * 1024 * 1024)
+        throw const FormatException('request too large');
+    }
+    return bytes.isEmpty ? null : jsonDecode(utf8.decode(bytes));
+  }
+
+  Future<void> _json(HttpRequest r, Object value, {int status = 200}) =>
+      _text(r, jsonEncode(value), status: status, type: ContentType.json);
+  Future<void> _text(HttpRequest r, String value,
+      {int status = 200, required ContentType type}) async {
+    final bytes = utf8.encode(value);
+    r.response.statusCode = status;
+    _applyHeaders(r.response);
+    r.response.headers.contentType = type;
+    r.response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+    r.response.headers.contentLength = bytes.length;
+    r.response.add(bytes);
+    await r.response.close();
+  }
+
+  void _applyHeaders(HttpResponse response) {
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('Referrer-Policy', 'no-referrer');
+    response.headers
+        .set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+    response.headers.set('Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  }
+
+  Future<String> _findLanAddress() async {
+    final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4, includeLoopback: false);
+    bool physical(NetworkInterface item) {
+      final name = item.name.toLowerCase();
+      return !name.contains('vethernet') &&
+          !name.contains('virtual') &&
+          !name.contains('wsl') &&
+          !name.contains('hyper-v') &&
+          !name.contains('vmware') &&
+          !name.contains('bluetooth');
+    }
+
+    bool private(InternetAddress item) =>
+        item.address.startsWith('192.168.') ||
+        item.address.startsWith('10.') ||
+        _private172(item.address);
+    final preferred = interfaces
+        .where(physical)
+        .expand((i) => i.addresses)
+        .where(private)
+        .toList();
+    if (preferred.isNotEmpty) return preferred.first.address;
+    final all = interfaces
+        .expand((i) => i.addresses)
+        .where((a) => !a.isLoopback)
+        .toList();
+    for (final a in all) {
+      if (private(a)) return a.address;
+    }
+    return all.isEmpty ? '127.0.0.1' : all.first.address;
+  }
+
+  bool _private172(String v) {
+    final p = v.split('.');
+    final n = p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0;
+    return p.first == '172' && n >= 16 && n <= 31;
+  }
+}

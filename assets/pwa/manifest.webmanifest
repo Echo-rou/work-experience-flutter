@@ -1,0 +1,18 @@
+{
+  "name": "Work Experience Library",
+  "short_name": "Experience",
+  "description": "Capture, reflect on, and reuse practical experience",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#1b2740",
+  "icons": [
+    {
+      "src": "/pwa-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

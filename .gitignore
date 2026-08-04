@@ -1,0 +1,43 @@
+# Flutter and Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+coverage/
+
+# IDE
+*.iml
+.idea/
+.vscode/
+
+# Platform-generated files
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+macos/Flutter/ephemeral/
+macos/Pods/
+macos/.symlinks/
+windows/flutter/ephemeral/
+
+# Release artifacts and local data
+dist/
+*.dwr
+library.json
+library.json.bak
+
+# Certificates, keys, and signing material
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+*.keystore
+*.jks
+
+# OS files
+.DS_Store
+Thumbs.db
