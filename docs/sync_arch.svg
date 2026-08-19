@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="300" viewBox="0 0 860 300" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="860" height="300" fill="#ffffff"/>
+  <text x="30" y="28" font-size="20" font-weight="bold" fill="#111827">Windows 桌面端 ↔ iPhone PWA · 局域网双向同步架构</text>
+
+  <!-- Left: Windows app -->
+  <g>
+    <rect x="30" y="70" width="280" height="150" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="170" y="100" text-anchor="middle" font-size="15" fill="#1e3a8a" font-weight="bold">Windows 桌面应用</text>
+    <text x="170" y="126" text-anchor="middle" font-size="12" fill="#1e3a8a">本地优先存储（SQLite / JSON）</text>
+    <text x="170" y="146" text-anchor="middle" font-size="12" fill="#1e3a8a">自动生成应用专用 HTTPS 根证书</text>
+    <text x="170" y="166" text-anchor="middle" font-size="12" fill="#1e3a8a">根私钥不可导出</text>
+    <text x="170" y="196" text-anchor="middle" font-size="12" fill="#1e3a8a">8 位配对码 · 恒定时间比对</text>
+  </g>
+
+  <!-- Right: PWA -->
+  <g>
+    <rect x="550" y="70" width="280" height="150" rx="12" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="690" y="100" text-anchor="middle" font-size="15" fill="#14532d" font-weight="bold">iPhone PWA</text>
+    <text x="690" y="126" text-anchor="middle" font-size="12" fill="#14532d">添加到主屏幕 · 离线可用</text>
+    <text x="690" y="146" text-anchor="middle" font-size="12" fill="#14532d">安装证书描述文件</text>
+    <text x="690" y="166" text-anchor="middle" font-size="12" fill="#14532d">安全配对后双向同步</text>
+    <text x="690" y="196" text-anchor="middle" font-size="12" fill="#14532d">电脑离线时读写本地副本</text>
+  </g>
+
+  <!-- Middle: sync -->
+  <g>
+    <line x1="310" y1="145" x2="550" y2="145" stroke="#0ea5e9" stroke-width="3" marker-start="url(#arr2)" marker-end="url(#arr)"/>
+    <rect x="360" y="90" width="140" height="60" rx="10" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="1.2"/>
+    <text x="430" y="114" text-anchor="middle" font-size="13" fill="#0c4a6e" font-weight="bold">局域网 HTTPS</text>
+    <text x="430" y="134" text-anchor="middle" font-size="12" fill="#0c4a6e">双向自动同步</text>
+  </g>
+
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#0ea5e9"/>
+    </marker>
+    <marker id="arr2" markerWidth="10" markerHeight="10" refX="2" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M8,0 L0,3 L8,6 z" fill="#0ea5e9"/>
+    </marker>
+  </defs>
+
+  <text x="30" y="280" font-size="12" fill="#6b7280">同一可信局域网自动双向同步；离线时各自使用本地副本，恢复联网后自动合并。</text>
+</svg>

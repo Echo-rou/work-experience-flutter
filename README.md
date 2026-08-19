@@ -10,6 +10,12 @@
 - 本地优先存储、`.dwr` 导入导出、同一局域网自动双向同步
 - Windows 自动生成应用专用 HTTPS 根证书；根私钥不可导出
 
+## 同步架构
+
+![Windows 桌面端 ↔ iPhone PWA 局域网双向同步](docs/sync_arch.svg)
+
+Windows 桌面应用与 iPhone PWA 在同一可信局域网内通过 HTTPS 自动双向同步：应用专用根证书建立信任、8 位配对码验证设备；任一端离线时各自读写本地副本，恢复联网后自动同步。
+
 ## iPhone 使用
 
 1. 在 Windows 应用 Settings 的 iPhone PWA 区域查看 Setup URL 和 8 位 Pairing code。
@@ -22,6 +28,8 @@
 电脑离线时，PWA 仍可查看和编辑本机副本；电脑重新上线且双方处于同一局域网时自动同步。
 
 ## 安全与隐私
+
+完整安全策略见 [SECURITY.md](SECURITY.md)。
 
 - HTTP 安装引导页不携带访问密钥；配对码只通过已验证的 HTTPS 页面提交。
 - 配对码和访问密钥有失败频率限制；接口使用严格来源 Cookie、恒定时间密钥比较及安全响应头。
