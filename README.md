@@ -50,6 +50,16 @@ flutter analyze
 
 iOS/macOS 原生构建需要安装 Xcode 的 Mac；当前 iPhone 交付方式是 PWA，不需要 App Store。
 
+## Windows 交付
+
+不要只复制 `.exe`。运行以下脚本会先执行静态检查和测试，再打包包含 DLL、数据文件和资源的完整 Release 目录：
+
+```powershell
+.\tool\package_windows.ps1
+```
+
+交付文件生成在 `dist/work-experience-library-windows-1.1.0.zip`。
+
 ## 数据位置
 
-Windows 数据位于系统 Application Support 下的 `work_experience_library/library.json`，并保留 `library.json.bak`。请定期导出 `.dwr` 备份，并把备份放在受保护的位置。
+Windows 数据位于系统 Application Support 下的 `work_experience_library/library.json`，并轮换保留最近 5 份本地备份。主文件损坏时应用会自动尝试从最近的有效备份恢复，同时保留损坏文件供排查。请继续定期导出 `.dwr` 备份，并把备份放在受保护的位置。

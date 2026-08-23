@@ -381,7 +381,8 @@ class WorkLibraryState extends ChangeNotifier {
         .map((e) => WorkEntry.fromJson(Map<String, dynamic>.from(e)))
         .where((e) =>
             e.id.isNotEmpty &&
-            (e.title.isNotEmpty ||
+            (e.items.any((item) => item.trim().isNotEmpty) ||
+                e.title.isNotEmpty ||
                 e.summary.isNotEmpty ||
                 e.content.isNotEmpty))
         .toList();

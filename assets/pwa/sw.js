@@ -1,4 +1,4 @@
-const CACHE = 'work-experience-pwa-v3';
+const CACHE = 'work-experience-pwa-v4';
 const SHELL = ['/app-shell', '/pwa-icon.png'];
 
 self.addEventListener('install', event => {
@@ -16,7 +16,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then(response => response.ok ? response : caches.match('/app-shell')).catch(() => caches.match('/app-shell')));
+    event.respondWith(fetch(event.request).then(async response => {
+      if (!response.ok) return (await caches.match('/app-shell')) || response;
+      if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/app-shell') {
+        const cache = await caches.open(CACHE);
+        await cache.put('/app-shell', response.clone());
+      }
+      return response;
+    }).catch(() => caches.match('/app-shell')));
     return;
   }
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));

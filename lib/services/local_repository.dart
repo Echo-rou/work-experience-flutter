@@ -18,6 +18,10 @@ class LibrarySnapshot {
 }
 
 class LocalRepository {
+  LocalRepository({File? databaseFile}) : _file = databaseFile;
+
+  static const backupCount = 5;
+
   File? _file;
 
   Future<File> get _database async {
@@ -37,46 +41,21 @@ class LocalRepository {
           entries: [], categories: defaultCategories, meta: {});
     }
     try {
-      final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map<String, dynamic>) {
-        throw const FormatException('Invalid data file format');
-      }
-      final entrySource = raw['entries'];
-      final entryValues = entrySource is Map
-          ? entrySource.values
-          : entrySource is List
-              ? entrySource
-              : const [];
-      final entries = entryValues
-          .whereType<Map>()
-          .map((e) => WorkEntry.fromJson(Map<String, dynamic>.from(e)))
-          .where((e) =>
-              e.id.isNotEmpty &&
-              (e.title.isNotEmpty ||
-                  e.summary.isNotEmpty ||
-                  e.content.isNotEmpty))
-          .toList();
-      final categorySource = raw['categories'];
-      final categories = categorySource is Map
-          ? categorySource.values
-              .whereType<Map>()
-              .map((e) => e['name']?.toString() ?? '')
-              .where((e) => e.isNotEmpty)
-              .toList()
-          : (categorySource as List? ?? const [])
-              .map((e) => e.toString())
-              .where((e) => e.isNotEmpty)
-              .toList();
-      return LibrarySnapshot(
-        entries: entries,
-        categories: categories.isEmpty ? defaultCategories : categories,
-        meta: Map<String, dynamic>.from(
-            raw['meta'] is Map ? raw['meta'] as Map : const {}),
-      );
+      return await _readSnapshot(file);
     } catch (_) {
       final broken =
           File('${file.path}.broken-${DateTime.now().millisecondsSinceEpoch}');
       await file.copy(broken.path);
+      for (final backup in _backupFiles(file)) {
+        if (!await backup.exists()) continue;
+        try {
+          final recovered = await _readSnapshot(backup);
+          await backup.copy(file.path);
+          return recovered;
+        } catch (_) {
+          // Try the next older backup.
+        }
+      }
       rethrow;
     }
   }
@@ -102,10 +81,66 @@ class LocalRepository {
         const JsonEncoder.withIndent('  ').convert(payload),
         flush: true);
     if (await file.exists()) {
-      final backup = File('${file.path}.bak');
-      await file.copy(backup.path);
+      await _rotateBackups(file);
     }
     await temp.rename(file.path);
+  }
+
+  Future<LibrarySnapshot> _readSnapshot(File source) async {
+    final decoded = jsonDecode(await source.readAsString());
+    if (decoded is! Map) {
+      throw const FormatException('Invalid data file format');
+    }
+    final raw = Map<String, dynamic>.from(decoded);
+    final entrySource = raw['entries'];
+    final entryValues = entrySource is Map
+        ? entrySource.values
+        : entrySource is List
+            ? entrySource
+            : const [];
+    final entries = entryValues
+        .whereType<Map>()
+        .map((e) => WorkEntry.fromJson(Map<String, dynamic>.from(e)))
+        .where((e) =>
+            e.id.isNotEmpty &&
+            (e.items.any((item) => item.trim().isNotEmpty) ||
+                e.title.isNotEmpty ||
+                e.summary.isNotEmpty ||
+                e.content.isNotEmpty))
+        .toList();
+    final categorySource = raw['categories'];
+    final categories = categorySource is Map
+        ? categorySource.values
+            .whereType<Map>()
+            .map((e) => e['name']?.toString() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : (categorySource as List? ?? const [])
+            .map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toList();
+    return LibrarySnapshot(
+      entries: entries,
+      categories: categories.isEmpty ? defaultCategories : categories,
+      meta: Map<String, dynamic>.from(
+          raw['meta'] is Map ? raw['meta'] as Map : const {}),
+    );
+  }
+
+  List<File> _backupFiles(File file) => [
+        File('${file.path}.bak'),
+        for (var i = 2; i <= backupCount; i++) File('${file.path}.bak.$i'),
+      ];
+
+  Future<void> _rotateBackups(File file) async {
+    final backups = _backupFiles(file);
+    if (await backups.last.exists()) await backups.last.delete();
+    for (var i = backups.length - 2; i >= 0; i--) {
+      if (await backups[i].exists()) {
+        await backups[i].rename(backups[i + 1].path);
+      }
+    }
+    await file.copy(backups.first.path);
   }
 
   static const List<String> defaultCategories = [

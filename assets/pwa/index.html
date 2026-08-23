@@ -654,6 +654,7 @@ const Storage={
         if(remote&&remote.name&&!localCats.has(remote.name)) await this.put("categories",remote);
       }
       this.lastSyncAt=Date.now();
+      await this.put("meta",{key:"lastSyncAt",value:this.lastSyncAt});
       return true;
     }finally{ this.syncing=false; }
   }
@@ -695,7 +696,8 @@ async function loadAll(){
   }catch(e){ state.entries=[]; entryReadFailed=true; }
   const bad=[];
   state.entries=(state.entries||[]).filter(e=>{
-    if(!e || typeof e!=="object" || (!e.title && !e.content && !e.summary)){ bad.push(e); return false; }
+    const hasItems=e&&Array.isArray(e.items)&&e.items.some(item=>String(item||"").trim());
+    if(!e || typeof e!=="object" || (!hasItems && !e.title && !e.content && !e.summary)){ bad.push(e); return false; }
     e.tags=Array.isArray(e.tags)?e.tags:[];
     return true;
   });
@@ -1654,9 +1656,15 @@ async function syncNow(silent){
 
 (async function init(){
   if("serviceWorker" in navigator){
-    navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("service worker",e));
+    navigator.serviceWorker.register("/sw.js",{updateViaCache:"none"})
+      .then(registration=>registration.update())
+      .catch(e=>console.warn("service worker",e));
   }
   await Storage.open();
+  try{
+    const savedSync=(await Storage.getAll("meta")).find(m=>m&&m.key==="lastSyncAt");
+    Storage.lastSyncAt=Number(savedSync&&savedSync.value)||0;
+  }catch(e){}
   try{ await Storage.sync(); }catch(e){ console.info("LAN offline; using local data"); }
   await loadAll();
   bindGlobal();
