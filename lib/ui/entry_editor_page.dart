@@ -95,68 +95,46 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          LayoutBuilder(builder: (context, constraints) {
-                            final date = _Field(
-                              label: 'Date',
-                              child: TextField(
-                                controller: _date,
-                                readOnly: true,
-                                onTap: _pickDate,
+                          _Field(
+                            label: 'Date',
+                            child: TextField(
+                              key: const ValueKey('record-date'),
+                              controller: _date,
+                              readOnly: true,
+                              onTap: _pickDate,
+                            ),
+                          ),
+                          _Field(
+                            label: 'Category',
+                            child: TextField(
+                              key: const ValueKey('record-category'),
+                              controller: _category,
+                              decoration: const InputDecoration(
+                                hintText: 'Enter or change any category',
                               ),
-                            );
-                            final category = _Field(
-                              label: 'Category',
-                              child: TextField(
-                                controller: _category,
-                                decoration: const InputDecoration(
-                                  hintText: 'Enter or change any category',
-                                ),
+                            ),
+                          ),
+                          _Field(
+                            label: 'Tags',
+                            hint: 'Separate multiple tags with commas',
+                            child: TextField(
+                              key: const ValueKey('record-tags'),
+                              controller: _tags,
+                              decoration: const InputDecoration(
+                                hintText: 'For example: work, study, idea',
                               ),
-                            );
-                            if (constraints.maxWidth < 650) {
-                              return Column(children: [date, category]);
-                            }
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(width: 190, child: date),
-                                const SizedBox(width: 16),
-                                Expanded(child: category),
-                              ],
-                            );
-                          }),
-                          LayoutBuilder(builder: (context, constraints) {
-                            final tags = _Field(
-                              label: 'Tags',
-                              hint: 'Separate multiple tags with commas',
-                              child: TextField(
-                                controller: _tags,
-                                decoration: const InputDecoration(
-                                  hintText: 'For example: work, study, idea',
-                                ),
-                              ),
-                            );
-                            final link = _Field(
-                              label: 'Related Link (optional)',
-                              child: TextField(
-                                controller: _link,
-                                keyboardType: TextInputType.url,
-                                decoration: const InputDecoration(
-                                    hintText: 'https://…'),
-                              ),
-                            );
-                            if (constraints.maxWidth < 650) {
-                              return Column(children: [tags, link]);
-                            }
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: tags),
-                                const SizedBox(width: 16),
-                                Expanded(child: link),
-                              ],
-                            );
-                          }),
+                            ),
+                          ),
+                          _Field(
+                            label: 'Related Link (optional)',
+                            child: TextField(
+                              key: const ValueKey('record-link'),
+                              controller: _link,
+                              keyboardType: TextInputType.url,
+                              decoration:
+                                  const InputDecoration(hintText: 'https://…'),
+                            ),
+                          ),
                           const Text(
                             'Items',
                             style: TextStyle(fontWeight: FontWeight.w600),
