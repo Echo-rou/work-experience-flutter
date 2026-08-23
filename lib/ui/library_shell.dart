@@ -16,9 +16,10 @@ class LibraryShell extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: state,
         builder: (context, _) {
-          if (state.loading)
+          if (state.loading) {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
+          }
           final desktop = MediaQuery.sizeOf(context).width >= 900;
           return Scaffold(
             drawer: desktop
@@ -58,7 +59,8 @@ class LibraryShell extends StatelessWidget {
                               color: AppColors.danger),
                           actions: [
                             TextButton(
-                                onPressed: () {}, child: const Text('Got it'))
+                                onPressed: state.clearError,
+                                child: const Text('Dismiss'))
                           ],
                         ),
                       Expanded(
@@ -90,23 +92,31 @@ class LibraryShell extends StatelessWidget {
       );
 
   Widget _body(BuildContext context) {
-    if (state.searchQuery.trim().isNotEmpty)
+    if (state.searchQuery.trim().isNotEmpty) {
       return _SearchView(
           state: state, open: (entry) => _openDetail(context, entry));
+    }
     return switch (state.view) {
       LibraryView.home => _HomeView(
           state: state,
           open: (entry) => _openDetail(context, entry),
           onNew: () => _openEditor(context)),
-      LibraryView.timeline => _TimelineView(
-          state: state, open: (entry) => _openDetail(context, entry)),
-      LibraryView.favorites => _EntryCollection(
+      LibraryView.timeline => _DatedEntryView(
+          title: 'Timeline',
+          subtitle: 'Review your records by date, newest first.',
+          emptyMessage: 'No records on the timeline yet.',
+          emptyIcon: Icons.schedule,
+          state: state,
+          entries: state.activeEntries,
+          open: (entry) => _openDetail(context, entry)),
+      LibraryView.favorites => _DatedEntryView(
           title: 'Favorites',
           subtitle: 'Core records worth revisiting',
           emptyMessage: 'No favorite records yet',
+          emptyIcon: Icons.star_border_rounded,
           state: state,
           entries: state.activeEntries.where((e) => e.favorite).toList()
-            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
+            ..sort(_newestFirst),
           open: (entry) => _openDetail(context, entry),
         ),
       LibraryView.tags =>
@@ -324,6 +334,7 @@ class _HomeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = state.activeEntries..sort(_newestFirst);
+    final todos = state.todayTodos;
     final days = entries.map((e) => e.date).toSet().length;
     return ListView(padding: const EdgeInsets.only(bottom: 60), children: [
       Container(
@@ -350,10 +361,57 @@ class _HomeView extends StatelessWidget {
           const SizedBox(height: 14),
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-            onPressed: onNew,
+            onPressed: () => _addTodo(context),
             icon: const Icon(Icons.add),
-            label: const Text('Record a Takeaway'),
+            label: const Text("Add Today's To-do"),
           ),
+          if (todos.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text(
+              "Today's To-dos",
+              style: TextStyle(
+                color: Color(0xFFE8E2D2),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...todos.map((todo) => Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .08),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Row(children: [
+                    Checkbox(
+                      value: todo.completed,
+                      onChanged: (_) => state.toggleTodo(todo.id),
+                      fillColor: WidgetStateProperty.resolveWith((states) =>
+                          states.contains(WidgetState.selected)
+                              ? AppColors.accent
+                              : Colors.transparent),
+                      side: const BorderSide(color: Color(0xFFA8B2C7)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        todo.content,
+                        style: TextStyle(
+                          color: const Color(0xFFE8E2D2),
+                          decoration: todo.completed
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete To-do',
+                      onPressed: () => state.removeTodo(todo.id),
+                      icon: const Icon(Icons.close,
+                          size: 18, color: Color(0xFFA8B2C7)),
+                    ),
+                  ]),
+                )),
+          ],
         ]),
       ),
       const SizedBox(height: 22),
@@ -369,7 +427,7 @@ class _HomeView extends StatelessWidget {
                   foregroundColor: Colors.white,
                   child: Icon(Icons.add)),
               SizedBox(width: 12),
-              Text('Just solved something? Capture it while it is fresh.',
+              Text('Just solved something? Capture it as a reusable record.',
                   style: TextStyle(color: AppColors.muted)),
             ]),
           ),
@@ -395,27 +453,67 @@ class _HomeView extends StatelessWidget {
         ),
     ]);
   }
+
+  Future<void> _addTodo(BuildContext context) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add Today's To-do"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(hintText: 'What needs to be done?'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null && value.trim().isNotEmpty) await state.addTodo(value);
+  }
 }
 
-class _TimelineView extends StatelessWidget {
-  const _TimelineView({required this.state, required this.open});
+class _DatedEntryView extends StatelessWidget {
+  const _DatedEntryView({
+    required this.title,
+    required this.subtitle,
+    required this.emptyMessage,
+    required this.emptyIcon,
+    required this.state,
+    required this.entries,
+    required this.open,
+  });
+
+  final String title;
+  final String subtitle;
+  final String emptyMessage;
+  final IconData emptyIcon;
   final WorkLibraryState state;
+  final List<WorkEntry> entries;
   final ValueChanged<WorkEntry> open;
 
   @override
   Widget build(BuildContext context) {
-    final entries = state.activeEntries..sort(_newestFirst);
+    final sortedEntries = List<WorkEntry>.from(entries)..sort(_newestFirst);
     final grouped = <String, List<WorkEntry>>{};
-    for (final entry in entries) {
+    for (final entry in sortedEntries) {
       grouped.putIfAbsent(entry.date, () => []).add(entry);
     }
     return ListView(padding: const EdgeInsets.only(bottom: 60), children: [
-      const _PageHeader(
-          title: 'Timeline',
-          subtitle: 'Review your records by date, newest first.'),
-      if (entries.isEmpty)
-        const _Empty(
-            icon: Icons.schedule, message: 'No records on the timeline yet.')
+      _PageHeader(title: title, subtitle: subtitle),
+      if (sortedEntries.isEmpty)
+        _Empty(icon: emptyIcon, message: emptyMessage)
       else
         ...grouped.entries.expand((group) => [
               Padding(
@@ -435,13 +533,12 @@ class _TimelineView extends StatelessWidget {
                   const Expanded(child: Divider()),
                 ]),
               ),
-              _ResponsiveGrid(
-                  children: group.value
-                      .map((e) => EntryCard(
-                          entry: e,
-                          onOpen: () => open(e),
-                          onFavorite: () => state.toggleFavorite(e.id)))
-                      .toList()),
+              ...group.value.map((e) => EntryCard(
+                    entry: e,
+                    compact: true,
+                    onOpen: () => open(e),
+                    onFavorite: () => state.toggleFavorite(e.id),
+                  )),
             ]),
     ]);
   }
@@ -626,7 +723,7 @@ class _CategoriesView extends StatelessWidget {
   }
 
   Future<void> _rename(BuildContext context, String oldName) async {
-    final name = await _ask(context, 'RenameCategories', oldName);
+    final name = await _ask(context, 'Rename Category', oldName);
     if (name != null) await state.renameCategory(oldName, name);
   }
 
@@ -678,9 +775,8 @@ class _TrashView extends StatelessWidget {
         ...entries.map((entry) => Card(
               margin: const EdgeInsets.only(bottom: 9),
               child: ListTile(
-                title:
-                    Text(entry.title.isEmpty ? 'Untitled Record' : entry.title),
-                subtitle: Text('${entry.date} · ${entry.summary}',
+                title: Text(entry.displayText),
+                subtitle: Text('${entry.date} · ${entry.timelinePreview()}',
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 trailing: Wrap(spacing: 6, children: [
                   OutlinedButton(
@@ -717,14 +813,16 @@ class _TrashView extends StatelessWidget {
 
   Future<void> _purge(BuildContext context, WorkEntry entry) async {
     if (await _confirm(
-        context, 'Delete Forever?', 'This action cannot be undone.'))
+        context, 'Delete Forever?', 'This action cannot be undone.')) {
       await state.purge(entry.id);
+    }
   }
 
   Future<void> _empty(BuildContext context) async {
     if (await _confirm(context, 'Empty Trash?',
-        'All records in Trash will be deleted permanently.'))
+        'All records in Trash will be deleted permanently.')) {
       await state.emptyTrash();
+    }
   }
 }
 
@@ -735,12 +833,13 @@ class _ResponsiveGrid extends StatelessWidget {
   Widget build(BuildContext context) =>
       LayoutBuilder(builder: (context, constraints) {
         final columns = constraints.maxWidth >= 720 ? 2 : 1;
-        if (columns == 1)
+        if (columns == 1) {
           return Column(
               children: children
                   .map((e) => Padding(
                       padding: const EdgeInsets.only(bottom: 11), child: e))
                   .toList());
+        }
         return GridView.count(
           crossAxisCount: 2,
           mainAxisSpacing: 12,

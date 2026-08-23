@@ -218,6 +218,14 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 .field .hint{font-size:12px;color:var(--muted);margin-top:5px}
 .field-row{display:flex;gap:16px}
 .field-row .field{flex:1}
+.point-list{display:flex;flex-direction:column;gap:9px;margin-bottom:10px}
+.point-row{display:flex;align-items:center;gap:8px}
+.point-number{width:24px;color:var(--accent);font-size:12px;font-weight:700;text-align:center;flex-shrink:0}
+.point-row textarea{flex:1;min-height:40px;resize:vertical}
+.point-actions{display:flex;align-items:center;flex-shrink:0}
+.point-remove{width:32px;height:32px;border:0;background:transparent;color:var(--muted);font-size:19px;cursor:pointer}
+.timeline-list .entry-card{width:100%;padding:10px 16px}
+.timeline-list .entry-summary{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
 .tags-input{
   display:flex;flex-wrap:wrap;gap:6px;align-items:center;
   padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fdfcfb;
@@ -560,12 +568,7 @@ const DB_NAME="fengkong_kb", DB_VER=2;
 const Storage={
   mode:"idb", db:null, err:null, key:"", syncing:false, lastSyncAt:0,
   open(){
-    const q=new URLSearchParams(location.search);
-    this.key=q.get("k")||"";
-    try{
-      if(this.key) localStorage.setItem("fk_key",this.key);
-      else this.key=localStorage.getItem("fk_key")||"";
-    }catch(e){}
+    try{ this.key=localStorage.getItem("fk_key")||""; }catch(e){}
     return this._openIdb();
   },
   _openIdb(){
@@ -669,9 +672,21 @@ const state={
   corruptCount:0
 };
 
-function activeEntries(){ return state.entries.filter(e=>!e.deleted&&!e.purged); }
-function trashedEntries(){ return state.entries.filter(e=>e.deleted&&!e.purged); }
+function activeEntries(){ return state.entries.filter(e=>e.kind!=="todo"&&!e.deleted&&!e.purged); }
+function trashedEntries(){ return state.entries.filter(e=>e.kind!=="todo"&&e.deleted&&!e.purged); }
+function todayTodos(){ return state.entries.filter(e=>e.kind==="todo"&&!e.deleted&&!e.purged&&e.date===todayStr()).sort((a,b)=>a.createdAt-b.createdAt); }
 function entryById(id){ return state.entries.find(e=>e.id===id); }
+function entryPointList(e){
+  if(Array.isArray(e.items)){
+    const explicit=e.items.map(x=>String(x||"").trim()).filter(Boolean);
+    if(explicit.length) return explicit;
+  }
+  const points=[];
+  if((e.summary||"").trim()) points.push(e.summary.trim());
+  String(e.content||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean).forEach(x=>{ if(!points.includes(x)) points.push(x); });
+  if(!points.length&&(e.title||"").trim()) points.push(e.title.trim());
+  return points;
+}
 
 async function loadAll(){
   let entryReadFailed=false;
@@ -736,14 +751,31 @@ async function toggleFavorite(id){
   e.favorite=!e.favorite; e.updatedAt=Date.now();
   await Storage.put("entries",e);
 }
+async function addTodo(text){
+  const value=String(text||"").trim();
+  if(!value) return;
+  await saveEntry({kind:"todo",completed:false,date:todayStr(),title:"",category:"",tags:[],summary:"",content:value,link:""});
+}
+async function toggleTodo(id){
+  const e=entryById(id); if(!e||e.kind!=="todo") return;
+  e.completed=!e.completed; e.updatedAt=Date.now();
+  await Storage.put("entries",e);
+}
+async function removeTodo(id){
+  const e=entryById(id); if(!e||e.kind!=="todo") return;
+  const now=Date.now();
+  Object.assign(e,{deleted:true,purged:true,deletedAt:now,updatedAt:now});
+  await Storage.put("entries",e);
+}
 async function softDelete(id){
   const e=entryById(id); if(!e) return;
-  e.deleted=true; e.deletedAt=Date.now();
+  const now=Date.now();
+  e.deleted=true; e.deletedAt=now; e.updatedAt=now;
   await Storage.put("entries",e);
 }
 async function restoreEntry(id){
   const e=entryById(id); if(!e) return;
-  e.deleted=false; delete e.deletedAt;
+  e.deleted=false; e.updatedAt=Date.now(); delete e.deletedAt;
   await Storage.put("entries",e);
 }
 async function purgeEntry(id){
@@ -856,13 +888,17 @@ function entryCard(e, highlightQ){
     }
     return t;
   };
+  const items=entryPointList(e);
+  const main=items[0]||"Empty item";
+  const all=items.join(" · ").replace(/^[\s#*>-]+/,"").replace(/[`*_]/g,"");
+  const preview=all.length<=80?all:all.slice(0,Math.max(40,Math.min(120,Math.ceil(all.length*.1))))+"…";
   return '<div class="card entry-card" data-id="'+escapeHtml(e.id)+'">'+
     '<div class="entry-head">'+
       '<span class="entry-date">'+escapeHtml(e.date)+'</span>'+
-      '<span class="entry-title">'+hl(e.title||"(Untitled)")+'</span>'+
+      '<span class="entry-title">'+hl(main)+'</span>'+
       '<button class="star'+(e.favorite?" on":"")+'" data-star="'+escapeHtml(e.id)+'" title="Favorite">★</button>'+
     '</div>'+
-    (e.summary?'<div class="entry-summary">'+hl(e.summary)+'</div>':"")+
+    (preview&&preview!==main?'<div class="entry-summary">'+hl(preview)+'</div>':"")+
     '<div class="entry-meta">'+
       (e.category?'<span class="chip">'+escapeHtml(e.category)+'</span>':"")+
       e.tags.map(t=>'<span class="tag" data-tag="'+escapeHtml(t)+'">#'+escapeHtml(t)+'</span>').join("")+
@@ -920,6 +956,7 @@ function bindBanner(root){
 /* ---- Home ---- */
 function renderHome(v){
   const list=activeEntries().sort((a,b)=> b.date===a.date ? b.createdAt-a.createdAt : (b.date>a.date?1:-1));
+  const todos=todayTodos();
   const days=new Set(list.map(e=>e.date)).size;
   let html="";
   if(Storage.mode==="ls"){
@@ -933,8 +970,14 @@ function renderHome(v){
     '<div class="hero"><h2>Daily Work Record</h2>'+
     '<div class="quote">One takeaway a day — years later, it becomes your own knowledge base.</div>'+
     '<div class="days">✎ Recorded on '+days+' day'+(days===1?"":"s")+'</div>'+
-    '<button class="btn btn-accent" id="hero-new">＋ Record Today</button></div>'+
-    '<div class="card quick-entry" id="quick-new"><div class="plus">＋</div><div>Any thought or takeaway today? Click to record…</div></div>'+
+    '<button class="btn btn-accent" id="hero-new">＋ Add Today\'s To-do</button>'+
+    (todos.length?'<div style="margin-top:18px"><div style="font-weight:600;color:#e8e2d2;margin-bottom:8px">Today\'s To-dos</div>'+todos.map(todo=>
+      '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:8px;padding:6px 9px;margin-bottom:6px">'+
+      '<input type="checkbox" data-todo-check="'+escapeHtml(todo.id)+'"'+(todo.completed?' checked':'')+'>'+
+      '<span style="flex:1;color:#e8e2d2;'+(todo.completed?'text-decoration:line-through;opacity:.65':'')+'">'+escapeHtml(todo.content)+'</span>'+
+      '<button data-todo-delete="'+escapeHtml(todo.id)+'" style="border:0;background:transparent;color:#a8b2c7;font-size:18px;cursor:pointer">×</button></div>'
+    ).join("")+'</div>':'')+'</div>'+
+    '<div class="card quick-entry" id="quick-new"><div class="plus">＋</div><div>Just solved something? Capture it as a reusable record.</div></div>'+
     '<div class="section-label">Recent Records</div>';
   if(!list.length){
     html+='<div class="empty"><div class="big">📝</div><p>No records yet.<br>Start with your first takeaway today.</p></div>';
@@ -943,31 +986,39 @@ function renderHome(v){
     if(list.length>8) html+='<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost btn-sm" id="more-btn">View all '+list.length+' records →</button></div>';
   }
   v.innerHTML=html;
-  $("#hero-new").onclick=()=>go("editor");
+  $("#hero-new").onclick=async ()=>{
+    const text=prompt("What needs to be done today?");
+    if(!text||!text.trim()) return;
+    await addTodo(text); render();
+  };
   $("#quick-new").onclick=()=>go("editor");
+  v.querySelectorAll("[data-todo-check]").forEach(box=>box.onchange=async()=>{ await toggleTodo(box.getAttribute("data-todo-check")); render(); });
+  v.querySelectorAll("[data-todo-delete]").forEach(button=>button.onclick=async()=>{ await removeTodo(button.getAttribute("data-todo-delete")); render(); });
   const mb=$("#more-btn"); if(mb) mb.onclick=()=>go("timeline");
   bindEntryCards(v); bindBanner(v);
 }
 
 /* ---- Timeline ---- */
+function datedEntryGroups(list){
+  const groups=new Map();
+  for(const entry of list){
+    if(!groups.has(entry.date)) groups.set(entry.date,[]);
+    groups.get(entry.date).push(entry);
+  }
+  let html="";
+  for(const [date,entries] of groups){
+    html+='<div class="date-group">'+escapeHtml(date)+'<span class="n">'+entries.length+' record'+(entries.length===1?"":"s")+'</span></div>'+
+      '<div class="timeline-list">'+entries.map(e=>entryCard(e)).join("")+'</div>';
+  }
+  return html;
+}
 function renderTimeline(v){
   const list=activeEntries().sort((a,b)=> b.date===a.date ? b.createdAt-a.createdAt : (b.date>a.date?1:-1));
   let html='<div class="page-title">Timeline</div><div class="page-desc">Review your records day by day, newest first.</div>';
   if(!list.length){
     html+='<div class="empty"><div class="big">🕘</div><p>No records yet.</p></div>';
   }else{
-    let curDate=null, buf=[];
-    const flush=()=>{ if(buf.length){ html+='<div class="entry-grid">'+buf.join("")+'</div>'; buf=[]; } };
-    for(const e of list){
-      if(e.date!==curDate){
-        flush();
-        curDate=e.date;
-        const n=list.filter(x=>x.date===curDate).length;
-        html+='<div class="date-group">'+escapeHtml(curDate)+'<span class="n">'+n+' record'+(n===1?"":"s")+'</span></div>';
-      }
-      buf.push(entryCard(e));
-    }
-    flush();
+    html+=datedEntryGroups(list);
   }
   v.innerHTML=html;
   bindEntryCards(v);
@@ -975,12 +1026,12 @@ function renderTimeline(v){
 
 /* ---- Favorites ---- */
 function renderFavorites(v){
-  const list=activeEntries().filter(e=>e.favorite).sort((a,b)=>b.updatedAt-a.updatedAt);
+  const list=activeEntries().filter(e=>e.favorite).sort((a,b)=> b.date===a.date ? b.createdAt-a.createdAt : (b.date>a.date?1:-1));
   let html='<div class="page-title">Favorites</div><div class="page-desc">Your core takeaways, worth revisiting often.</div>';
   if(!list.length){
     html+='<div class="empty"><div class="big">★</div><p>No favorites yet. Tap ★ on any record to pin it here.</p></div>';
   }else{
-    html+='<div class="entry-grid">'+list.map(e=>entryCard(e)).join("")+'</div>';
+    html+=datedEntryGroups(list);
   }
   v.innerHTML=html;
   bindEntryCards(v);
@@ -1056,7 +1107,7 @@ function renderCategories(v){
       const c=state.categories.find(x=>x.name===old);
       await Storage.del("categories",old);
       c.name=nn; await Storage.put("categories",c);
-      for(const e of state.entries){ if(e.category===old){ e.category=nn; await Storage.put("entries",e); } }
+      for(const e of state.entries){ if(e.category===old){ e.category=nn; e.updatedAt=Date.now(); await Storage.put("entries",e); } }
       state.meta.recentCats=state.meta.recentCats.map(x=>x===old?nn:x);
       await saveMeta("recentCats");
       toast("Category renamed");
@@ -1073,7 +1124,7 @@ function renderCategories(v){
       if(!ok) return;
       state.categories=state.categories.filter(c=>c.name!==name);
       await Storage.del("categories",name);
-      for(const e of state.entries){ if(e.category===name){ e.category="Uncategorized"; await Storage.put("entries",e); } }
+      for(const e of state.entries){ if(e.category===name){ e.category="Uncategorized"; e.updatedAt=Date.now(); await Storage.put("entries",e); } }
       state.meta.recentCats=state.meta.recentCats.filter(x=>x!==name);
       await saveMeta("recentCats");
       toast("Category deleted");
@@ -1091,7 +1142,8 @@ function renderTrash(v){
   }else{
     html+='<div style="margin-bottom:14px"><button class="btn btn-danger btn-sm" id="empty-trash">Empty trash ('+list.length+')</button></div>';
     for(const e of list){
-      html+='<div class="card cat-row"><span class="cname">'+escapeHtml(e.title||"(Untitled)")+'</span>'+
+      const label=entryPointList(e)[0]||"Empty item";
+      html+='<div class="card cat-row"><span class="cname">'+escapeHtml(label)+'</span>'+
         '<span class="ccount">Deleted '+(e.deletedAt?fmtTime(e.deletedAt):"-")+'</span>'+
         '<button class="btn btn-ghost btn-sm" data-restore="'+escapeHtml(e.id)+'">Restore</button>'+
         '<button class="btn btn-danger btn-sm" data-purge="'+escapeHtml(e.id)+'">Delete forever</button></div>';
@@ -1148,9 +1200,9 @@ function renderSearch(v){
 function renderDetail(v){
   const e=entryById(state.detailId);
   if(!e){ go("home"); return; }
+  const points=entryPointList(e);
   let html='<div style="margin-bottom:16px"><button class="btn btn-ghost btn-sm" id="back-btn">← Back</button></div>'+
     '<div class="card detail-card">'+
-    '<div class="detail-title">'+escapeHtml(e.title||"(Untitled)")+'</div>'+
     '<div class="detail-meta">'+
       '<span>📅 '+escapeHtml(e.date)+'</span>'+
       (e.category?'<span class="chip">'+escapeHtml(e.category)+'</span>':"")+
@@ -1158,8 +1210,7 @@ function renderDetail(v){
       (safeHttpUrl(e.link)?' · <a href="'+escapeHtml(safeHttpUrl(e.link))+'" target="_blank" rel="noopener noreferrer">Related link ↗</a>':"")+
       '<span style="margin-left:auto;font-size:12px">Updated '+fmtTime(e.updatedAt)+'</span>'+
     '</div>'+
-    (e.summary?'<div class="detail-block"><div class="blabel">TODAY\'S TAKEAWAY</div><div class="summary-box">'+escapeHtml(e.summary)+'</div></div>':"")+
-    '<div class="detail-block"><div class="blabel">THOUGHTS</div><div class="md-body">'+renderMarkdown(e.content)+'</div></div>'+
+    '<div class="detail-block"><div class="blabel">ITEMS</div><div class="md-body">'+points.map((point,i)=>'<div class="point-row" style="align-items:flex-start;margin-bottom:12px"><span class="point-number">'+(i+1)+'.</span><div style="flex:1">'+renderMarkdown(point)+'</div></div>').join("")+'</div></div>'+
     '<div class="detail-actions">'+
       '<button class="btn '+(e.favorite?"btn-accent":"btn-ghost")+'" id="d-fav">'+(e.favorite?"★ Favorited":"☆ Favorite")+'</button>'+
       '<button class="btn btn-primary" id="d-edit">Edit</button>'+
@@ -1172,7 +1223,7 @@ function renderDetail(v){
   $("#d-edit").onclick=()=>go("editor",e.id);
   $("#d-read").onclick=()=>openReading(e);
   $("#d-del").onclick=async ()=>{
-    const ok=await confirmDialog("Delete Record",'"'+(e.title||"Untitled")+'" will be moved to Trash and can be restored anytime.',{danger:true,okText:"Move to Trash"});
+    const ok=await confirmDialog("Delete Record",'"'+(points[0]||"Empty item")+'" will be moved to Trash and can be restored anytime.',{danger:true,okText:"Move to Trash"});
     if(!ok) return;
     await softDelete(e.id);
     toast("Moved to Trash");
@@ -1181,15 +1232,15 @@ function renderDetail(v){
 }
 
 function openReading(e){
+  const points=entryPointList(e);
   const ov=document.createElement("div");
   ov.className="reading-overlay";
   ov.innerHTML='<button class="reading-close">✕</button>'+
-    '<div class="reading-inner"><h1>'+escapeHtml(e.title||"(Untitled)")+'</h1>'+
+    '<div class="reading-inner">'+
     '<div class="rmeta">'+escapeHtml(e.date)+
     (e.category?" · "+escapeHtml(e.category):"")+
     (e.tags.length?" · "+e.tags.map(t=>"#"+escapeHtml(t)).join(" "):"")+'</div>'+
-    (e.summary?'<div class="summary-box" style="margin-bottom:30px">'+escapeHtml(e.summary)+'</div>':"")+
-    '<div class="md-body">'+renderMarkdown(e.content)+'</div></div>';
+    '<div class="md-body">'+points.map((point,i)=>'<div style="display:flex;gap:12px;margin-bottom:16px"><b>'+(i+1)+'.</b><div>'+renderMarkdown(point)+'</div></div>').join("")+'</div></div>';
   document.body.appendChild(ov);
   const close=()=>{ ov.remove(); document.removeEventListener("keydown",onKey); };
   ov.querySelector(".reading-close").onclick=close;
@@ -1207,56 +1258,37 @@ function renderEditor(v){
   }
   const init={
     date:     editing?editing.date    :(draft&&draft.date)||todayStr(),
-    title:    editing?editing.title   :(draft&&draft.title)||"",
     category: editing?editing.category:(draft&&draft.category)||"",
     tags:     editing?editing.tags.slice():(draft&&Array.isArray(draft.tags)?draft.tags:[]),
     link:     editing?(editing.link||""):(draft&&draft.link)||"",
-    content:  editing?editing.content :(draft&&draft.content)||"",
-    summary:  editing?editing.summary :(draft&&draft.summary)||""
+    points:   editing
+      ? entryPointList(editing)
+      : (draft&&Array.isArray(draft.points)?draft.points.slice():[])
   };
-  const catOptions=state.categories.map(c=>'<option value="'+escapeHtml(c.name)+'">').join("");
+  if(!init.points.length) init.points.push("");
   let html=
     '<div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
       '<button class="btn btn-ghost btn-sm" id="ed-back">← Back</button>'+
-      '<span style="font-weight:600">'+(editing?"Edit Record":"Record Today's Takeaway")+'</span>'+
+      '<span style="font-weight:600">'+(editing?"Edit Record":"Add Record")+'</span>'+
       (draft&&!editing?'<span style="font-size:12px;color:var(--accent)">Draft restored from last unsaved session</span>':"")+
     '</div>'+
     '<div class="card editor-card">'+
-    '<div class="field-row">'+
-      '<div class="field"><label>Date</label><input type="date" id="f-date" value="'+escapeHtml(init.date)+'"></div>'+
-      '<div class="field" style="flex:2"><label>Title</label><input type="text" id="f-title" placeholder="One-line summary, e.g. Supply chain risk judgment" value="'+escapeHtml(init.title)+'"></div>'+
-    '</div>'+
+    '<div class="field"><label>Date</label><input type="date" id="f-date" value="'+escapeHtml(init.date)+'"></div>'+
     '<div class="field-row">'+
       '<div class="field"><label>Category</label>'+
-        '<input type="text" id="f-category" list="cat-list" placeholder="Pick or type a new one" value="'+escapeHtml(init.category)+'">'+
-        '<datalist id="cat-list">'+catOptions+'</datalist>'+
-        '<div class="recent-cats" id="recent-cats"></div>'+
+        '<input type="text" id="f-category" placeholder="Enter or change any category" value="'+escapeHtml(init.category)+'">'+
       '</div>'+
       '<div class="field"><label>Link (optional)</label><input type="url" id="f-link" placeholder="https://…" value="'+escapeHtml(init.link)+'"></div>'+
     '</div>'+
     '<div class="field"><label>Tags (Enter or comma to add)</label>'+
       '<div class="tags-input" id="tags-box"><input type="text" id="f-tag-input" placeholder="e.g. supply-chain, contract, risk"></div>'+
     '</div>'+
-    '<div class="field"><label>Today\'s Takeaway</label>'+
-      '<textarea id="f-summary" style="min-height:70px" placeholder="The one-line lesson: what will you do differently next time?">'+escapeHtml(init.summary)+'</textarea>'+
-    '</div>'+
-    '<div class="field"><label>Thoughts (Markdown supported)</label>'+
-      '<div class="md-toolbar">'+
-        '<button data-md="bold"><b>B</b> Bold</button>'+
-        '<button data-md="h">H Heading</button>'+
-        '<button data-md="ul">• List</button>'+
-        '<button data-md="quote">❝ Quote</button>'+
-        '<button data-md="code">{ } Code</button>'+
-        '<button data-md="link">🔗 Link</button>'+
-        '<span style="flex:1"></span>'+
-        '<button data-md="preview">👁 Preview</button>'+
-      '</div>'+
-      '<textarea id="f-content" placeholder="Your thinking, reasoning, how you handled it…">'+escapeHtml(init.content)+'</textarea>'+
-      '<div class="md-preview md-body" id="md-preview" style="display:none"></div>'+
-      '<div class="hint">Supports **bold**, # heading, - list, > quote, `code`, [link](url) · Ctrl+Enter to save</div>'+
+    '<div class="field"><label>Items</label>'+
+      '<div class="hint" style="margin-bottom:9px">Return starts a new line inside the current item. Tap ＋ on the right to add the next item.</div>'+
+      '<div class="point-list" id="point-list"></div>'+
     '</div>'+
     '<div class="editor-actions">'+
-      '<button class="btn btn-accent" id="f-save">Save (Ctrl+Enter)</button>'+
+      '<button class="btn btn-accent" id="f-save">Save Record (Ctrl+Enter)</button>'+
       '<button class="btn btn-ghost" id="f-cancel">Cancel</button>'+
       '<span class="draft-tip" id="draft-tip"></span>'+
     '</div></div>';
@@ -1291,78 +1323,74 @@ function renderEditor(v){
     if(t&&!init.tags.includes(t)){ init.tags.push(t); tagInput.value=""; drawTags(); }
   });
 
-  /* Recent categories */
-  const rcBox=$("#recent-cats");
-  const rc=state.meta.recentCats||[];
-  rcBox.innerHTML = rc.length
-    ? '<span style="font-size:11.5px;color:var(--muted)">Recent:</span>'+rc.map(c=>'<span class="chip" data-rc="'+escapeHtml(c)+'">'+escapeHtml(c)+'</span>').join("")
-    : "";
-  rcBox.querySelectorAll("[data-rc]").forEach(b=>b.onclick=()=>{ $("#f-category").value=b.getAttribute("data-rc"); });
-
-  /* Markdown toolbar */
-  const content=$("#f-content"), preview=$("#md-preview");
-  let previewOn=false;
-  v.querySelectorAll("[data-md]").forEach(b=>{
-    b.onclick=()=>{
-      const act=b.getAttribute("data-md");
-      const s=content.selectionStart, en=content.selectionEnd;
-      const sel=content.value.slice(s,en);
-      function wrap(before,after,ph){
-        const text=sel||ph;
-        content.value=content.value.slice(0,s)+before+text+after+content.value.slice(en);
-        content.focus();
-        content.selectionStart=s+before.length;
-        content.selectionEnd=s+before.length+text.length;
-      }
-      switch(act){
-        case "bold":  wrap("**","**","important"); break;
-        case "h":     wrap("## ","","Section"); break;
-        case "ul":    wrap("- ","","Point"); break;
-        case "quote": wrap("> ","","Quote"); break;
-        case "code":  wrap("`","`","code"); break;
-        case "link":  wrap("[","](https://)","text"); break;
-        case "preview":
-          previewOn=!previewOn;
-          if(previewOn){ preview.innerHTML=renderMarkdown(content.value)||'<span style="color:var(--muted)">(Nothing yet)</span>'; preview.style.display="block"; content.style.display="none"; b.textContent="✎ Edit"; }
-          else{ preview.style.display="none"; content.style.display="block"; b.textContent="👁 Preview"; content.focus(); }
-          break;
-      }
-    };
-  });
+  /* One point per row */
+  const pointList=$("#point-list");
+  function drawPoints(focusIndex){
+    pointList.innerHTML=init.points.map((point,i)=>
+      '<div class="point-row"><span class="point-number">'+(i+1)+'.</span>'+
+      '<textarea data-point="'+i+'" rows="1" placeholder="'+(i?"Enter the next item":"Enter the first item")+'">'+escapeHtml(point)+'</textarea>'+
+      '<span class="point-actions"><button class="point-remove" data-add-point="'+i+'" title="Add item after this one">＋</button>'+
+      '<button class="point-remove" data-remove-point="'+i+'" title="Remove item"'+(init.points.length===1?' disabled':'')+'>−</button></span></div>'
+    ).join("");
+    pointList.querySelectorAll("[data-point]").forEach(input=>{
+      const i=+input.getAttribute("data-point");
+      const resize=()=>{ input.style.height="auto"; input.style.height=input.scrollHeight+"px"; };
+      input.addEventListener("input",()=>{ init.points[i]=input.value; resize(); saveDraft(); });
+      resize();
+    });
+    pointList.querySelectorAll("[data-add-point]").forEach(button=>{
+      button.onclick=()=>{
+        const i=+button.getAttribute("data-add-point");
+        init.points.splice(i+1,0,"");
+        drawPoints(i+1); saveDraft();
+      };
+    });
+    pointList.querySelectorAll("[data-remove-point]").forEach(button=>{
+      button.onclick=()=>{
+        if(init.points.length===1) return;
+        init.points.splice(+button.getAttribute("data-remove-point"),1);
+        drawPoints(); saveDraft();
+      };
+    });
+    if(Number.isInteger(focusIndex)){
+      const next=pointList.querySelector('[data-point="'+focusIndex+'"]');
+      if(next) next.focus();
+    }
+  }
 
   /* Draft autosave (new records only) */
   const draftTip=$("#draft-tip");
   const saveDraft=debounce(()=>{
     if(editing) return;
     const d={
-      date:$("#f-date").value, title:$("#f-title").value,
+      date:$("#f-date").value,
       category:$("#f-category").value, tags:init.tags,
-      link:$("#f-link").value, summary:$("#f-summary").value, content:content.value
+      link:$("#f-link").value, points:init.points.slice()
     };
-    if(d.title||d.content||d.summary){
+    if(d.points.some(x=>x.trim())){
       localStorage.setItem(DRAFT_KEY,JSON.stringify(d));
       draftTip.textContent="Draft autosaved "+fmtTime(Date.now()).slice(11);
     }
   },600);
-  ["#f-date","#f-title","#f-category","#f-link","#f-summary"].forEach(s=>$(s).addEventListener("input",saveDraft));
-  content.addEventListener("input",()=>{ saveDraft(); if(previewOn) preview.innerHTML=renderMarkdown(content.value); });
+  drawPoints();
+  ["#f-date","#f-category","#f-link"].forEach(s=>$(s).addEventListener("input",saveDraft));
 
   /* Save */
   async function doSave(){
-    const title=$("#f-title").value.trim();
-    // Title is optional; a record just needs ANY content to be worth saving
-    if(!title && !$("#f-summary").value.trim() && !content.value.trim()){
-      toast("Nothing to save yet — write a takeaway or some thoughts",true);
+    const points=init.points.map(x=>x.trim()).filter(Boolean);
+    if(!points.length){
+      toast("Add at least one item before saving",true);
       return;
     }
     const data={
       date:$("#f-date").value||todayStr(),
-      title:title,
+      title:"",
       category:$("#f-category").value.trim(),
       tags:init.tags.slice(),
       link:$("#f-link").value.trim(),
-      summary:$("#f-summary").value.trim(),
-      content:content.value
+      summary:"",
+      content:points.join("\n\n"),
+      items:points.slice()
     };
     try{
       if(editing) data.id=editing.id;
@@ -1456,9 +1484,10 @@ async function exportData(){
     version:1,
     exportedAt:new Date().toISOString(),
     categories:state.categories.map(c=>c.name),
-    entries:activeEntries().map(e=>({
+    entries:state.entries.filter(e=>!e.deleted&&!e.purged).map(e=>({
       id:e.id, date:e.date, title:e.title, category:e.category, tags:e.tags,
       content:e.content, summary:e.summary, favorite:e.favorite, link:e.link||"",
+      items:Array.isArray(e.items)?e.items:[], kind:e.kind||"record", completed:!!e.completed,
       createdAt:e.createdAt, updatedAt:e.updatedAt
     }))
   };
@@ -1486,7 +1515,7 @@ function onImportFile(ev){
     if(!data||!Array.isArray(data.entries)){ toast("Import failed: bad format (missing entries)",true); return; }
     const valid=[], skipped=[];
     data.entries.forEach(r=>{
-      if(!r||typeof r!=="object"||(!r.title&&!r.content&&!r.summary)){ skipped.push(r); return; }
+      if(!r||typeof r!=="object"||(!r.title&&!r.content&&!r.summary&&!(Array.isArray(r.items)&&r.items.length))){ skipped.push(r); return; }
       valid.push({
         id:(typeof r.id==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(r.id))?r.id:uid(),
         date:/^\d{4}-\d{2}-\d{2}$/.test(r.date)?r.date:todayStr(),
@@ -1494,9 +1523,12 @@ function onImportFile(ev){
         category:String(r.category||""),
         tags:Array.isArray(r.tags)?r.tags.map(String):[],
         content:String(r.content||""),
+        items:Array.isArray(r.items)?r.items.map(String):[],
         summary:String(r.summary||""),
         favorite:!!r.favorite,
         link:String(r.link||""),
+        kind:r.kind==="todo"?"todo":"record",
+        completed:!!r.completed,
         createdAt:+r.createdAt||Date.now(),
         updatedAt:+r.updatedAt||Date.now(),
         deleted:false
@@ -1511,7 +1543,9 @@ function onImportFile(ev){
     try{
       if(choice===true){
         await Storage.clear("entries");
+        await Storage.clear("categories");
         state.entries=[];
+        state.categories=[];
         for(const e of valid){ state.entries.push(e); await Storage.put("entries",e); }
       }else{
         const exist=new Set(state.entries.map(e=>e.id));
@@ -1522,14 +1556,16 @@ function onImportFile(ev){
         }
         toast("Merged: "+added+" new record(s)");
       }
-      if(Array.isArray(data.categories)){
-        for(const name of data.categories){
+      const importedCategories=new Set([
+        ...(Array.isArray(data.categories)?data.categories:[]),
+        ...valid.map(e=>e.category)
+      ]);
+      for(const name of importedCategories){
           const n=String(name).trim();
           if(n&&!state.categories.find(c=>c.name===n)){
             const c={name:n,createdAt:Date.now()};
             state.categories.push(c); await Storage.put("categories",c);
           }
-        }
       }
       state.meta.lastBackupAt=Date.now(); await saveMeta("lastBackupAt");
       if(choice===true) toast("Imported "+valid.length+" record(s)");
@@ -1592,8 +1628,8 @@ function bindGlobal(){
   });
   window.addEventListener("beforeunload",e=>{
     if(state.view==="editor"){
-      const t=$("#f-title"), c=$("#f-content");
-      if((t&&t.value)||(c&&c.value)){ e.preventDefault(); e.returnValue=""; }
+      const hasPoint=Array.from(document.querySelectorAll("[data-point]")).some(x=>x.value.trim());
+      if(hasPoint){ e.preventDefault(); e.returnValue=""; }
     }
   });
 }

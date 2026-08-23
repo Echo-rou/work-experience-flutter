@@ -15,10 +15,25 @@ class LocalCertificateBundle {
 }
 
 class LocalCertificateService {
+  String get _powerShellExecutable {
+    final systemRoot = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    final executable =
+        File('$systemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    return executable.existsSync() ? executable.path : 'powershell.exe';
+  }
+
+  Map<String, String> get _powerShellEnvironment {
+    final systemRoot = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    return {
+      'PSModulePath': '$systemRoot\\System32\\WindowsPowerShell\\v1.0\\Modules'
+    };
+  }
+
   Future<LocalCertificateBundle> prepare(String ipAddress) async {
-    if (!Platform.isWindows)
+    if (!Platform.isWindows) {
       throw UnsupportedError(
           'Automatic LAN HTTPS certificate setup currently supports Windows only');
+    }
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
         '${support.path}${Platform.pathSeparator}work_experience_library${Platform.pathSeparator}certificates');
@@ -54,20 +69,22 @@ Write-Output $root.Thumbprint
         .replaceAll(r'$PFX_PASSWORD', "'${safe(password)}'");
 
     final result = await Process.run(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          script
-        ],
-        runInShell: false);
+      _powerShellExecutable,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        script
+      ],
+      runInShell: false,
+      environment: _powerShellEnvironment,
+    );
     if (result.exitCode != 0 || !await pfx.exists() || !await root.exists()) {
       final detail = result.stderr.toString().trim();
       throw ProcessException(
-          'powershell.exe',
+          _powerShellExecutable,
           const [],
           detail.isEmpty ? 'Certificate generation failed' : detail,
           result.exitCode);
@@ -84,7 +101,7 @@ Write-Output $root.Thumbprint
 Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=Work Experience Library LAN' } | Remove-Item -Force
 ''';
     final result = await Process.run(
-      'powershell.exe',
+      _powerShellExecutable,
       const [
         '-NoProfile',
         '-NonInteractive',
@@ -94,10 +111,11 @@ Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=Work Expe
         script,
       ],
       runInShell: false,
+      environment: _powerShellEnvironment,
     );
     if (result.exitCode != 0) {
       throw ProcessException(
-        'powershell.exe',
+        _powerShellExecutable,
         const [],
         'Could not remove the temporary TLS certificate',
         result.exitCode,

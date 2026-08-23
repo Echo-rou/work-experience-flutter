@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../app_theme.dart';
 import '../models/work_entry.dart';
+import '../utils/safe_url.dart';
 import 'entry_editor_page.dart';
 
 class EntryDetailPage extends StatelessWidget {
@@ -18,9 +19,10 @@ class EntryDetailPage extends StatelessWidget {
         animation: state,
         builder: (context, _) {
           final entry = state.findEntry(entryId);
-          if (entry == null)
+          if (entry == null) {
             return const Scaffold(
                 body: Center(child: Text('Record not found')));
+          }
           return Scaffold(
             appBar: AppBar(
               backgroundColor: AppColors.background,
@@ -59,13 +61,6 @@ class EntryDetailPage extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(24, 12, 24, 60),
                   children: [
-                    Text(entry.title.isEmpty ? 'Untitled Record' : entry.title,
-                        style: const TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 30,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink)),
-                    const SizedBox(height: 10),
                     Wrap(
                       spacing: 10,
                       runSpacing: 8,
@@ -78,40 +73,55 @@ class EntryDetailPage extends StatelessWidget {
                         ...entry.tags.map((tag) => Chip(label: Text('#$tag'))),
                       ],
                     ),
-                    if (entry.summary.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                            color: AppColors.accentSoft,
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Daily Takeaway',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.accent)),
-                              const SizedBox(height: 8),
-                              SelectableText(entry.summary,
-                                  style: const TextStyle(
-                                      fontSize: 16, height: 1.7)),
-                            ]),
-                      ),
-                    ],
-                    if (entry.content.isNotEmpty) ...[
+                    if (entry.contentItems.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(22),
-                          child: MarkdownBody(
-                            data: entry.content,
-                            selectable: true,
-                            onTapLink: (_, href, __) {
-                              if (href != null)
-                                launchUrl(Uri.parse(href),
-                                    mode: LaunchMode.externalApplication);
-                            },
+                          child: Column(
+                            children: List.generate(entry.contentItems.length,
+                                (index) {
+                              final item = entry.contentItems[index];
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: index == entry.contentItems.length - 1
+                                      ? 0
+                                      : 12,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 26,
+                                      height: 26,
+                                      alignment: Alignment.center,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.accentSoft,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: AppColors.accent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: MarkdownBody(
+                                        data: item.replaceAll(
+                                            RegExp(r'\r?\n'), '  \n'),
+                                        selectable: true,
+                                        onTapLink: (_, href, __) =>
+                                            _openHttpLink(context, href ?? ''),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
                           ),
                         ),
                       ),
@@ -121,8 +131,7 @@ class EntryDetailPage extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: OutlinedButton.icon(
-                          onPressed: () => launchUrl(Uri.parse(entry.link),
-                              mode: LaunchMode.externalApplication),
+                          onPressed: () => _openHttpLink(context, entry.link),
                           icon: const Icon(Icons.open_in_new, size: 18),
                           label: const Text('Open Related Link'),
                         ),
@@ -136,13 +145,36 @@ class EntryDetailPage extends StatelessWidget {
         },
       );
 
+  Future<void> _openHttpLink(BuildContext context, String value) async {
+    final uri = parseSafeHttpUrl(value);
+    if (uri == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Only valid HTTP and HTTPS links can be opened')));
+      return;
+    }
+    try {
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open this link')));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open this link')));
+      }
+    }
+  }
+
   Future<void> _delete(BuildContext context, WorkEntry entry) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Move to Trash?'),
-        content: Text(
-            '“${entry.title.isEmpty ? 'Untitled Record' : entry.title}” can be restored later.'),
+        content: Text('“${entry.displayText}” can be restored later.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),

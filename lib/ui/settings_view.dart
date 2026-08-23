@@ -108,9 +108,10 @@ class _SettingsViewState extends State<SettingsView> {
                     onPressed: () async {
                       await Clipboard.setData(
                           ClipboardData(text: widget.state.pwaSetupAddress));
-                      if (context.mounted)
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Address copied')));
+                      }
                     },
                     icon: const Icon(Icons.copy, size: 18),
                     label: const Text('Copy Setup Guide URL'),
@@ -171,11 +172,12 @@ class _SettingsViewState extends State<SettingsView> {
                   obscureText: true,
                   decoration: const InputDecoration(
                       labelText: 'Access Key',
-                      hintText: 'The value after k= in the service URL'),
+                      hintText: 'Access key issued by the trusted service'),
                 );
-                if (constraints.maxWidth < 650)
+                if (constraints.maxWidth < 650) {
                   return Column(
                       children: [url, const SizedBox(height: 12), token]);
+                }
                 return Row(children: [
                   Expanded(flex: 2, child: url),
                   const SizedBox(width: 12),
@@ -233,9 +235,10 @@ class _SettingsViewState extends State<SettingsView> {
     try {
       await action();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$e')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -243,9 +246,10 @@ class _SettingsViewState extends State<SettingsView> {
 
   Future<void> _export() => _run(() async {
         final path = await widget.state.exportBackup();
-        if (path != null && mounted)
+        if (path != null && mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(const SnackBar(content: Text('Backup exported')));
+        }
       });
 
   Future<void> _import(bool merge) => _run(() async {
@@ -269,16 +273,18 @@ class _SettingsViewState extends State<SettingsView> {
           if (confirmed != true) return;
         }
         final count = await widget.state.importBackup(merge: merge);
-        if (count != null && mounted)
+        if (count != null && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Imported $count new records')));
+        }
       });
 
   Future<void> _test() => _run(() async {
         await widget.state.testLan(_url.text, _token.text);
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Connection successful')));
+        }
       });
 
   Future<void> _saveAndSync() => _run(() async {

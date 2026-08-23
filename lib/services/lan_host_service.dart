@@ -91,15 +91,16 @@ class LanHostService {
         r.response.headers.set('content-disposition',
             'attachment; filename="work-experience-root.cer"');
         r.response.add(_rootCertificate);
-        return r.response.close();
+        return await r.response.close();
       }
-      if (r.method != 'GET' || r.uri.path != '/setup')
-        return _json(r, {'error': 'not found'}, status: 404);
+      if (r.method != 'GET' || r.uri.path != '/setup') {
+        return await _json(r, {'error': 'not found'}, status: 404);
+      }
       final certUrl = 'http://$ip:$setupPort/work-experience-root.cer';
       final pairUrl = 'https://$ip:$port/pair';
       final page =
           '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Work Experience Library Setup</title><style>body{font-family:-apple-system,sans-serif;max-width:680px;margin:0 auto;padding:28px 22px;color:#202838;line-height:1.7}.card{border:1px solid #ddd6c8;border-radius:14px;padding:18px;margin:16px 0}a{display:block;text-align:center;background:#1b2740;color:white;padding:12px;border-radius:10px;text-decoration:none;margin:12px 0}.muted{color:#6f7784;font-size:13px}</style></head><body><h1>Work Experience Library · iPhone Setup</h1><div class="card"><b>Step 1: Install the dedicated certificate</b><a href="$certUrl">Download Certificate</a><p>Open Settings &gt; Profile Downloaded and install it. Then go to Settings &gt; General &gt; About &gt; Certificate Trust Settings and enable full trust for <b>Work Experience Library Local Root</b>.</p></div><div class="card"><b>Step 2: Pair securely over HTTPS</b><a href="$pairUrl">Open Secure Pairing</a><p>Enter the 8-digit pairing code shown in the desktop app, then use Safari Share &gt; Add to Home Screen.</p></div><p class="muted">The HTTP setup page contains no sync key or private data. The profile contains only the public root certificate and no MDM, VPN, account, or device-management settings.</p></body></html>''';
-      return _text(r, page, type: ContentType.html);
+      return await _text(r, page, type: ContentType.html);
     } catch (e) {
       try {
         await _json(r, {'error': 'setup failed'}, status: 500);
@@ -115,27 +116,31 @@ class LanHostService {
   Future<void> _handleSecure(HttpRequest r) async {
     try {
       final path = r.uri.path;
-      if (r.method == 'GET' && path == '/pair')
-        return _text(r, _pairPage, type: ContentType.html);
-      if (r.method == 'POST' && path == '/api/pair') return _pair(r);
+      if (r.method == 'GET' && path == '/pair') {
+        return await _text(r, _pairPage, type: ContentType.html);
+      }
+      if (r.method == 'POST' && path == '/api/pair') return await _pair(r);
       if (r.method == 'GET' && (path == '/' || path == '/index.html')) {
-        if (!_pageAuthorized(r))
-          return _text(r,
+        if (!_pageAuthorized(r)) {
+          return await _text(r,
               '<h3>Pairing required</h3><p><a href="/pair">Open secure pairing</a></p>',
               status: 401, type: ContentType.html);
-        return _text(r, _html, type: ContentType.html);
+        }
+        return await _text(r, _html, type: ContentType.html);
       }
-      if (r.method == 'GET' && path == '/app-shell')
-        return _text(r, _html, type: ContentType.html);
+      if (r.method == 'GET' && path == '/app-shell') {
+        return await _text(r, _html, type: ContentType.html);
+      }
       if (r.method == 'GET' && path == '/sw.js') {
         r.response.headers.set('Service-Worker-Allowed', '/');
-        return _text(r, _serviceWorker,
+        return await _text(r, _serviceWorker,
             type: ContentType('application', 'javascript', charset: 'utf-8'));
       }
       if (r.method == 'GET' && path == '/manifest.webmanifest') {
-        if (!_pageAuthorized(r))
-          return _json(r, {'error': 'unauthorized'}, status: 403);
-        return _text(r, _manifest,
+        if (!_pageAuthorized(r)) {
+          return await _json(r, {'error': 'unauthorized'}, status: 403);
+        }
+        return await _text(r, _manifest,
             type:
                 ContentType('application', 'manifest+json', charset: 'utf-8'));
       }
@@ -143,47 +148,52 @@ class LanHostService {
         _applyHeaders(r.response);
         r.response.headers.contentType = ContentType('image', 'png');
         r.response.add(_icon);
-        return r.response.close();
+        return await r.response.close();
       }
-      if (!path.startsWith('/api/'))
-        return _json(r, {'error': 'not found'}, status: 404);
+      if (!path.startsWith('/api/')) {
+        return await _json(r, {'error': 'not found'}, status: 404);
+      }
       final remote = r.connectionInfo?.remoteAddress.address ?? 'unknown';
-      if (!_allowed(_authFailures, remote, 10, const Duration(minutes: 1)))
-        return _json(r, {'error': 'too many attempts'}, status: 429);
+      if (!_allowed(_authFailures, remote, 10, const Duration(minutes: 1))) {
+        return await _json(r, {'error': 'too many attempts'}, status: 429);
+      }
       if (!_constantTime(r.headers.value('X-Key') ?? '', token)) {
         _recordFailure(_authFailures, remote);
-        return _json(r, {'error': 'unauthorized'}, status: 403);
+        return await _json(r, {'error': 'unauthorized'}, status: 403);
       }
       _authFailures.remove(remote);
-      if (r.method == 'GET' && path == '/api/ping')
-        return _json(
+      if (r.method == 'GET' && path == '/api/ping') {
+        return await _json(
             r, {'ok': true, 'time': DateTime.now().millisecondsSinceEpoch});
-      if (r.method == 'POST' && path == '/api/sync') return _sync(r);
+      }
+      if (r.method == 'POST' && path == '/api/sync') return await _sync(r);
       final s = r.uri.pathSegments;
       if (s.length >= 3 &&
           s[0] == 'api' &&
           s[1] == 'store' &&
           _validStore(s[2])) {
         final store = s[2];
-        if (r.method == 'GET' && s.length == 3)
-          return _json(r, readStore(store));
+        if (r.method == 'GET' && s.length == 3) {
+          return await _json(r, readStore(store));
+        }
         if (r.method == 'PUT' && s.length == 3) {
           final b = await _readJson(r);
-          if (b is! Map)
-            return _json(r, {'error': 'invalid body'}, status: 400);
+          if (b is! Map) {
+            return await _json(r, {'error': 'invalid body'}, status: 400);
+          }
           await writeStore(store, Map<String, dynamic>.from(b));
-          return _json(r, {'ok': true});
+          return await _json(r, {'ok': true});
         }
         if (r.method == 'DELETE' && s.length == 4) {
           await deleteStoreValue(store, s[3]);
-          return _json(r, {'ok': true});
+          return await _json(r, {'ok': true});
         }
         if (r.method == 'POST' && s.length == 4 && s[3] == 'clear') {
           await clearStore(store);
-          return _json(r, {'ok': true});
+          return await _json(r, {'ok': true});
         }
       }
-      return _json(r, {'error': 'not found'}, status: 404);
+      return await _json(r, {'error': 'not found'}, status: 404);
     } catch (e) {
       try {
         await _json(r, {'error': 'request failed'}, status: 500);
@@ -195,9 +205,10 @@ class LanHostService {
 
   Future<void> _pair(HttpRequest r) async {
     final remote = r.connectionInfo?.remoteAddress.address ?? 'unknown';
-    if (!_allowed(_pairFailures, remote, 5, const Duration(minutes: 5)))
+    if (!_allowed(_pairFailures, remote, 5, const Duration(minutes: 5))) {
       return _json(r, {'error': 'Too many attempts. Wait five minutes.'},
           status: 429);
+    }
     final body = await _readJson(r);
     final code = body is Map ? body['code']?.toString().trim() ?? '' : '';
     if (!_constantTime(code, pairingCode)) {
@@ -262,11 +273,12 @@ class LanHostService {
     if (body['categories'] is List) {
       for (final raw in body['categories'] as List) {
         final name = (raw is Map ? raw['name'] : raw)?.toString().trim() ?? '';
-        if (name.isNotEmpty && names.add(name))
+        if (name.isNotEmpty && names.add(name)) {
           await writeStore('categories', {
             'name': name,
             'createdAt': DateTime.now().millisecondsSinceEpoch
           });
+        }
       }
     }
     return _json(r, {
@@ -288,8 +300,9 @@ class LanHostService {
     final bytes = <int>[];
     await for (final chunk in r) {
       bytes.addAll(chunk);
-      if (bytes.length > 20 * 1024 * 1024)
+      if (bytes.length > 20 * 1024 * 1024) {
         throw const FormatException('request too large');
+      }
     }
     return bytes.isEmpty ? null : jsonDecode(utf8.decode(bytes));
   }

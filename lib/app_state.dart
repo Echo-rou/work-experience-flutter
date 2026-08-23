@@ -43,9 +43,17 @@ class WorkLibraryState extends ChangeNotifier {
   List<WorkEntry> get entries => List.unmodifiable(_entries);
   List<String> get categories => List.unmodifiable(_categories);
   List<WorkEntry> get activeEntries =>
-      _entries.where((e) => !e.deleted && !e.purged).toList();
+      _entries.where((e) => !e.isTodo && !e.deleted && !e.purged).toList();
   List<WorkEntry> get trashEntries =>
-      _entries.where((e) => e.deleted && !e.purged).toList();
+      _entries.where((e) => !e.isTodo && e.deleted && !e.purged).toList();
+  List<WorkEntry> get todayTodos {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return _entries
+        .where((e) => e.isTodo && !e.deleted && !e.purged && e.date == today)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
   String get serverUrl => _meta['serverUrl']?.toString() ?? '';
   String get serverToken => _meta['serverToken']?.toString() ?? '';
   int get lastBackupAt => _asInt(_meta['lastBackupAt']);
@@ -101,6 +109,11 @@ class WorkLibraryState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearError() {
+    error = null;
+    notifyListeners();
+  }
+
   void selectTag(String? value) {
     selectedTag = value;
     notifyListeners();
@@ -122,6 +135,7 @@ class WorkLibraryState extends ChangeNotifier {
     required String summary,
     required String content,
     required String link,
+    List<String> items = const [],
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final current = id == null ? null : findEntry(id);
@@ -133,6 +147,7 @@ class WorkLibraryState extends ChangeNotifier {
             category: category.trim(),
             tags: _cleanTags(tags),
             content: content,
+            items: items,
             summary: summary.trim(),
             favorite: false,
             link: link.trim(),
@@ -146,6 +161,7 @@ class WorkLibraryState extends ChangeNotifier {
             category: category.trim(),
             tags: _cleanTags(tags),
             content: content,
+            items: items,
             summary: summary.trim(),
             link: link.trim(),
             updatedAt: now,
@@ -160,6 +176,51 @@ class WorkLibraryState extends ChangeNotifier {
     }
     await _persist();
     return entry;
+  }
+
+  Future<void> addTodo(String value) async {
+    final text = value.trim();
+    if (text.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _entries.add(WorkEntry(
+      id: _uuid.v4(),
+      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      title: '',
+      category: '',
+      tags: const [],
+      content: text,
+      summary: '',
+      favorite: false,
+      link: '',
+      createdAt: now,
+      updatedAt: now,
+      deleted: false,
+      kind: 'todo',
+    ));
+    await _persist();
+  }
+
+  Future<void> toggleTodo(String id) async {
+    final todo = findEntry(id);
+    if (todo == null || !todo.isTodo) return;
+    _replace(todo.copyWith(
+      completed: !todo.completed,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    ));
+    await _persist();
+  }
+
+  Future<void> removeTodo(String id) async {
+    final todo = findEntry(id);
+    if (todo == null || !todo.isTodo) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _replace(todo.copyWith(
+      deleted: true,
+      purged: true,
+      deletedAt: now,
+      updatedAt: now,
+    ));
+    await _persist();
   }
 
   Future<void> toggleFavorite(String id) async {
@@ -248,8 +309,9 @@ class WorkLibraryState extends ChangeNotifier {
             _entries[i].copyWith(category: 'Uncategorized', updatedAt: now);
       }
     }
-    if (!_categories.contains('Uncategorized'))
+    if (!_categories.contains('Uncategorized')) {
       _categories.add('Uncategorized');
+    }
     await _persist();
   }
 
@@ -275,8 +337,10 @@ class WorkLibraryState extends ChangeNotifier {
       'version': 1,
       'exportedAt': DateTime.now().toIso8601String(),
       'categories': _categories,
-      'entries':
-          activeEntries.map((e) => e.toJson()..remove('deleted')).toList(),
+      'entries': _entries
+          .where((e) => !e.deleted && !e.purged)
+          .map((e) => e.toJson()..remove('deleted'))
+          .toList(),
     };
     final bytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(data));
     final name =
@@ -289,8 +353,9 @@ class WorkLibraryState extends ChangeNotifier {
       bytes: bytes,
     );
     if (path == null) return null;
-    if (!kIsWeb && !await File(path).exists())
+    if (!kIsWeb && !await File(path).exists()) {
       await File(path).writeAsBytes(bytes, flush: true);
+    }
     _meta['lastBackupAt'] = DateTime.now().millisecondsSinceEpoch;
     await _persist();
     return path;
@@ -308,8 +373,9 @@ class WorkLibraryState extends ChangeNotifier {
         (picked.path == null ? null : await File(picked.path!).readAsBytes());
     if (bytes == null) throw Exception('Could not read the backup file');
     final raw = jsonDecode(utf8.decode(bytes));
-    if (raw is! Map || raw['entries'] is! List)
+    if (raw is! Map || raw['entries'] is! List) {
       throw const FormatException('Invalid backup format');
+    }
     final imported = (raw['entries'] as List)
         .whereType<Map>()
         .map((e) => WorkEntry.fromJson(Map<String, dynamic>.from(e)))
@@ -319,7 +385,10 @@ class WorkLibraryState extends ChangeNotifier {
                 e.summary.isNotEmpty ||
                 e.content.isNotEmpty))
         .toList();
-    if (!merge) _entries.clear();
+    if (!merge) {
+      _entries.clear();
+      _categories.clear();
+    }
     final existing = {for (final entry in _entries) entry.id};
     var added = 0;
     for (final entry in imported) {
@@ -327,13 +396,22 @@ class WorkLibraryState extends ChangeNotifier {
         _entries.add(entry.copyWith(deleted: false, clearDeletedAt: true));
         added++;
       }
+      final category = entry.category.trim();
+      if (category.isNotEmpty && !_categories.contains(category)) {
+        _categories.add(category);
+      }
     }
     for (final category
         in (raw['categories'] as List? ?? const []).map((e) => e.toString())) {
-      if (category.trim().isNotEmpty && !_categories.contains(category.trim()))
+      if (category.trim().isNotEmpty &&
+          !_categories.contains(category.trim())) {
         _categories.add(category.trim());
+      }
     }
     await _persist();
+    if (_categories.isEmpty) {
+      _categories.addAll(LocalRepository.defaultCategories);
+    }
     return added;
   }
 
@@ -348,8 +426,9 @@ class WorkLibraryState extends ChangeNotifier {
   }
 
   Future<void> syncLan() async {
-    if (serverUrl.isEmpty || serverToken.isEmpty)
+    if (serverUrl.isEmpty || serverToken.isEmpty) {
       throw Exception('Enter the computer URL and access key first');
+    }
     syncing = true;
     syncMessage = 'Syncing…';
     notifyListeners();
@@ -387,8 +466,9 @@ class WorkLibraryState extends ChangeNotifier {
         ..clear()
         ..addAll(categoryUnion);
       for (final category in _categories) {
-        if (!remote.categories.contains(category))
+        if (!remote.categories.contains(category)) {
           await service.putCategory(category);
+        }
       }
       _meta['lastSyncAt'] = DateTime.now().millisecondsSinceEpoch;
       syncMessage = 'Sync complete';
@@ -454,8 +534,9 @@ class WorkLibraryState extends ChangeNotifier {
       } else {
         _replace(entry);
       }
-      if (entry.category.isNotEmpty && !_categories.contains(entry.category))
+      if (entry.category.isNotEmpty && !_categories.contains(entry.category)) {
         _categories.add(entry.category);
+      }
     } else if (store == 'categories') {
       final name = value['name']?.toString().trim() ?? '';
       if (name.isEmpty) throw const FormatException('missing category name');
@@ -475,9 +556,10 @@ class WorkLibraryState extends ChangeNotifier {
       _categories.remove(key);
       final now = DateTime.now().millisecondsSinceEpoch;
       for (var i = 0; i < _entries.length; i++) {
-        if (_entries[i].category == key)
+        if (_entries[i].category == key) {
           _entries[i] =
               _entries[i].copyWith(category: 'Uncategorized', updatedAt: now);
+        }
       }
     } else if (store == 'meta' && key != 'hostToken') {
       _meta.remove(key);

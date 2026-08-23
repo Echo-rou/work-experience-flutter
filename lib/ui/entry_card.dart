@@ -18,72 +18,135 @@ class EntryCard extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => compact
+      ? _compactCard()
+      : Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onOpen,
+            child: Padding(
+              padding: EdgeInsets.all(compact ? 14 : 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(entry.date,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.muted)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          entry.displayText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: entry.favorite
+                            ? 'Remove from Favorites'
+                            : 'Add to Favorites',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onFavorite,
+                        icon: Icon(
+                            entry.favorite
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: entry.favorite
+                                ? const Color(0xFFE0A83E)
+                                : const Color(0xFFD8D2C4)),
+                      ),
+                    ],
+                  ),
+                  if (entry.combinedText.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(entry.combinedText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Color(0xFF4A5261), height: 1.55)),
+                  ],
+                  if (entry.category.isNotEmpty || entry.tags.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 6,
+                      children: [
+                        if (entry.category.isNotEmpty)
+                          _Chip(
+                              label: entry.category,
+                              background: AppColors.accentSoft,
+                              foreground: AppColors.accent),
+                        ...entry.tags
+                            .take(4)
+                            .map((tag) => _Chip(label: '#$tag')),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+
+  Widget _compactCard() => Card(
         clipBehavior: Clip.antiAlias,
+        margin: const EdgeInsets.only(bottom: 9),
         child: InkWell(
           onTap: onOpen,
           child: Padding(
-            padding: EdgeInsets.all(compact ? 14 : 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Text(entry.date,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.muted)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        entry.title.isEmpty ? 'Untitled Record' : entry.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: entry.favorite
-                          ? 'Remove from Favorites'
-                          : 'Add to Favorites',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onFavorite,
-                      icon: Icon(
-                          entry.favorite
-                              ? Icons.star_rounded
-                              : Icons.star_border_rounded,
-                          color: entry.favorite
-                              ? const Color(0xFFE0A83E)
-                              : const Color(0xFFD8D2C4)),
-                    ),
-                  ],
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    entry.date,
+                    style:
+                        const TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
                 ),
-                if (entry.summary.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(entry.summary,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Color(0xFF4A5261), height: 1.55)),
-                ],
-                if (entry.category.isNotEmpty || entry.tags.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 6,
-                    children: [
-                      if (entry.category.isNotEmpty)
-                        _Chip(
-                            label: entry.category,
-                            background: AppColors.accentSoft,
-                            foreground: AppColors.accent),
-                      ...entry.tags.take(4).map((tag) => _Chip(label: '#$tag')),
-                    ],
+                Expanded(
+                  child: Text(
+                    entry.timelinePreview(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ),
+                if (entry.category.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  _Chip(
+                    label: entry.category,
+                    background: AppColors.accentSoft,
+                    foreground: AppColors.accent,
                   ),
                 ],
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: entry.favorite
+                      ? 'Remove from Favorites'
+                      : 'Add to Favorites',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onFavorite,
+                  icon: Icon(
+                    entry.favorite
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
+                    color: entry.favorite
+                        ? const Color(0xFFE0A83E)
+                        : const Color(0xFFD8D2C4),
+                  ),
+                ),
               ],
             ),
           ),

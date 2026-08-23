@@ -33,12 +33,14 @@ class LocalRepository {
   Future<LibrarySnapshot> load() async {
     final file = await _database;
     if (!await file.exists()) {
-      return LibrarySnapshot(entries: [], categories: _defaults, meta: {});
+      return LibrarySnapshot(
+          entries: [], categories: defaultCategories, meta: {});
     }
     try {
       final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map<String, dynamic>)
+      if (raw is! Map<String, dynamic>) {
         throw const FormatException('Invalid data file format');
+      }
       final entrySource = raw['entries'];
       final entryValues = entrySource is Map
           ? entrySource.values
@@ -67,7 +69,7 @@ class LocalRepository {
               .toList();
       return LibrarySnapshot(
         entries: entries,
-        categories: categories.isEmpty ? _defaults : categories,
+        categories: categories.isEmpty ? defaultCategories : categories,
         meta: Map<String, dynamic>.from(
             raw['meta'] is Map ? raw['meta'] as Map : const {}),
       );
@@ -106,7 +108,7 @@ class LocalRepository {
     await temp.rename(file.path);
   }
 
-  static const List<String> _defaults = [
+  static const List<String> defaultCategories = [
     'Work',
     'Learning',
     'Life',
