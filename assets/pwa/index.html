@@ -49,7 +49,7 @@ a:hover{text-decoration:underline}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ============ Layout ============ */
-#app{display:flex;height:100vh;overflow:hidden}
+#app{display:flex;height:100vh;height:100dvh;overflow:hidden}
 .sidebar{
   width:232px;flex-shrink:0;
   background:linear-gradient(180deg,var(--navy) 0%,#141d33 100%);
@@ -180,6 +180,7 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 .hero .btn{margin-top:14px;position:relative;z-index:1}
 .quick-entry{
   display:flex;align-items:center;gap:12px;
+  width:100%;text-align:left;
   padding:14px 18px;margin-bottom:24px;
   color:var(--muted);cursor:pointer;transition:border-color .15s;
 }
@@ -376,18 +377,18 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 /* ============ Mobile ============ */
 .bottom-nav{
   display:none;position:fixed;z-index:150;box-sizing:border-box;
-  left:max(10px,env(safe-area-inset-left));
-  right:max(10px,env(safe-area-inset-right));
-  bottom:calc(env(safe-area-inset-bottom) + 8px);
-  min-height:66px;padding:5px 4px;
+  left:0;right:0;bottom:0;
+  min-height:66px;
+  padding:5px max(4px,env(safe-area-inset-right)) max(5px,env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left));
   background:var(--navy);border:1px solid rgba(255,255,255,.12);
-  border-radius:18px;overflow:hidden;
+  border-radius:0;overflow:hidden;
   box-shadow:0 8px 24px rgba(16,25,43,.28);
 }
 .bottom-nav button{
   flex:1;min-width:0;min-height:54px;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:1px;
   color:#8a94ab;font-size:10.5px;padding:3px 0;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
 }
 .bottom-nav button .bi{font-size:19px;line-height:1.3}
 .bottom-nav button.active{color:var(--gold)}
@@ -407,7 +408,18 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 @media (max-width:760px){
   .sidebar{display:none}
   .topbar{padding:0 14px;height:52px}
-  #btn-new-top{display:none}
+  .topbar{
+    box-sizing:border-box;
+    height:calc(52px + env(safe-area-inset-top));
+    padding:env(safe-area-inset-top) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));
+  }
+  .search-box{min-width:0}
+  #btn-new-top{
+    display:inline-flex;width:40px;height:40px;flex:0 0 40px;
+    align-items:center;justify-content:center;padding:0;border-radius:50%;
+  }
+  #btn-new-top .new-label{display:none}
+  #btn-new-top .new-icon{font-size:22px;line-height:1}
   .view-wrap{padding:16px 14px calc(104px + env(safe-area-inset-bottom))}
   .field-row{flex-direction:column;gap:0}
   .hero{padding:24px 20px}
@@ -449,7 +461,7 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
         <input type="text" id="global-search" placeholder="Search title / thoughts / takeaway / category / tag…  (Ctrl+F)">
       </div>
       <div class="spacer"></div>
-      <button class="btn btn-primary" id="btn-new-top">＋ New Record</button>
+      <button type="button" class="btn btn-primary" id="btn-new-top" aria-label="Add a new record"><span class="new-icon" aria-hidden="true">＋</span><span class="new-label">New Record</span></button>
     </div>
     <div class="view-wrap" id="view-wrap">
       <div class="view-inner" id="view"></div>
@@ -830,7 +842,7 @@ function renderBottomNav(){
     {key:"__menu",    icon:"☰", txt:"Menu"}
   ];
   el.innerHTML=items.map(i=>
-    '<button class="'+(i.key===state.view?"active":"")+(i.key==="__new"?" bn-new":"")+'" data-bn="'+i.key+'">'+
+    '<button type="button" aria-label="'+(i.key==="__new"?"Add a new record":escapeHtml(i.txt))+'" class="'+(i.key===state.view?"active":"")+(i.key==="__new"?" bn-new":"")+'" data-bn="'+i.key+'">'+
     '<span class="bi">'+i.icon+'</span>'+i.txt+'</button>'
   ).join("");
   el.querySelectorAll("[data-bn]").forEach(b=>b.onclick=()=>{
@@ -985,7 +997,7 @@ function renderHome(v){
       '<span style="flex:1;color:#e8e2d2;'+(todo.completed?'text-decoration:line-through;opacity:.65':'')+'">'+escapeHtml(todo.content)+'</span>'+
       '<button data-todo-delete="'+escapeHtml(todo.id)+'" style="border:0;background:transparent;color:#a8b2c7;font-size:18px;cursor:pointer">×</button></div>'
     ).join("")+'</div>':'')+'</div>'+
-    '<div class="card quick-entry" id="quick-new"><div class="plus">＋</div><div>Just solved something? Capture it as a reusable record.</div></div>'+
+    '<button type="button" class="card quick-entry" id="quick-new" aria-label="Add a new record"><div class="plus">＋</div><div><b style="color:var(--ink-soft)">New Record</b><br><span>Capture a reusable thought, method, or lesson.</span></div></button>'+
     '<div class="section-label">Recent Records</div>';
   if(!list.length){
     html+='<div class="empty"><div class="big">📝</div><p>No records yet.<br>Start with your first takeaway today.</p></div>';

@@ -28,6 +28,8 @@ if ($LASTEXITCODE -ne 0) { throw 'flutter build windows failed.' }
 if (-not (Test-Path -LiteralPath $releaseDirectory)) {
   throw "Windows release directory was not created: $releaseDirectory"
 }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'README_使用手册.md') -Destination (Join-Path $releaseDirectory 'README_使用手册.md') -Force
+
 New-Item -ItemType Directory -Path $distributionDirectory -Force | Out-Null
 if (Test-Path -LiteralPath $archive) {
   Remove-Item -LiteralPath $archive -Force

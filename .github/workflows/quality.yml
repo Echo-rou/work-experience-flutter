@@ -29,7 +29,9 @@ jobs:
       - run: flutter pub get
       - run: flutter build windows --release
       - shell: pwsh
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath work-experience-library-windows.zip
+        run: |
+          Copy-Item -LiteralPath README_使用手册.md -Destination build/windows/x64/runner/Release/README_使用手册.md -Force
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath work-experience-library-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: work-experience-library-windows
