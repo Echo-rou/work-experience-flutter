@@ -10,6 +10,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Work Experience Library">
+<script>
+(()=>{
+  const appleTouch=/iPad|iPhone|iPod/.test(navigator.userAgent)||
+    (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const ipad=/iPad/.test(navigator.userAgent)||
+    (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  if(appleTouch) document.documentElement.classList.add(ipad?"apple-ipad":"apple-phone");
+})();
+</script>
 <style>
 :root{
   --bg:#f6f4ef;
@@ -27,6 +36,10 @@
   --gold:#c9a86a;
   --shadow:0 1px 3px rgba(38,44,54,.06),0 4px 16px rgba(38,44,54,.05);
   --radius:12px;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-right:env(safe-area-inset-right,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+  --safe-left:env(safe-area-inset-left,0px);
   --serif:Georgia,"Songti SC","STSong","SimSun",serif;
   --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
 }
@@ -56,7 +69,7 @@ a:hover{text-decoration:underline}
   color:#c8cfdd;
   display:flex;flex-direction:column;
 }
-.brand{padding:26px 22px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand{padding:calc(26px + var(--safe-top)) max(22px,var(--safe-right)) 20px max(22px,var(--safe-left));border-bottom:1px solid rgba(255,255,255,.08)}
 .brand h1{font-family:var(--serif);font-size:19px;color:#f0e8d8;letter-spacing:1px;font-weight:600}
 .brand p{font-size:11.5px;color:#7d879e;margin-top:4px;letter-spacing:.5px}
 .nav{flex:1;padding:14px 12px;overflow-y:auto}
@@ -72,11 +85,11 @@ a:hover{text-decoration:underline}
 .nav-item .icon{width:18px;text-align:center;font-size:15px}
 .nav-item .count{margin-left:auto;font-size:11.5px;background:rgba(255,255,255,.1);padding:1px 7px;border-radius:10px}
 .sidebar-foot{padding:14px 22px;font-size:11px;border-top:1px solid rgba(255,255,255,.07);color:#66708a}
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .topbar{
-  height:58px;flex-shrink:0;
+  height:calc(58px + var(--safe-top));flex-shrink:0;
   display:flex;align-items:center;gap:14px;
-  padding:0 28px;
+  padding:var(--safe-top) max(28px,var(--safe-right)) 0 max(28px,var(--safe-left));
   background:var(--card);
   border-bottom:1px solid var(--line);
 }
@@ -402,16 +415,24 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
   border-bottom:1px solid var(--line);
 }
 .menu-list button:last-child{border-bottom:none}
+@media (display-mode:standalone) and (any-pointer:coarse){
+  :root{--safe-top:max(env(safe-area-inset-top,0px),24px)}
+  html.apple-phone{--safe-top:max(env(safe-area-inset-top,0px),48px)}
+}
 @media (max-width:1000px){
   .entry-grid{grid-template-columns:1fr}
+  .topbar{padding-right:max(18px,var(--safe-right));padding-left:max(18px,var(--safe-left))}
+  #btn-new-top{display:inline-flex;width:40px;height:40px;flex:0 0 40px;align-items:center;justify-content:center;padding:0;border-radius:50%}
+  #btn-new-top .new-label{display:none}
+  #btn-new-top .new-icon{font-size:22px;line-height:1}
 }
 @media (max-width:760px){
   .sidebar{display:none}
   .topbar{padding:0 14px;height:52px}
   .topbar{
     box-sizing:border-box;
-    height:calc(52px + env(safe-area-inset-top));
-    padding:env(safe-area-inset-top) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));
+    height:calc(52px + var(--safe-top));
+    padding:var(--safe-top) max(14px,var(--safe-right)) 0 max(14px,var(--safe-left));
   }
   .search-box{min-width:0}
   #btn-new-top{

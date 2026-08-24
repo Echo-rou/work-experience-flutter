@@ -6,7 +6,7 @@ void main() {
   test('service worker refreshes the offline app shell', () async {
     final source = await File('assets/pwa/sw.js').readAsString();
 
-    expect(source, contains("const CACHE = 'work-experience-pwa-v7'"));
+    expect(source, contains("const CACHE = 'work-experience-pwa-v8'"));
     expect(source, contains("cache.put('/app-shell', response.clone())"));
     expect(source, contains('self.skipWaiting()'));
     expect(source, contains('self.clients.claim()'));
@@ -29,7 +29,10 @@ void main() {
     expect(source, contains('max(5px,env(safe-area-inset-bottom))'));
     expect(source, contains('border-radius:0;overflow:hidden'));
     expect(source, contains('margin-top:0'));
-    expect(source, contains('env(safe-area-inset-top)'));
+    expect(source, contains('env(safe-area-inset-top,0px)'));
+    expect(source, contains('height:calc(58px + var(--safe-top))'));
+    expect(source, contains('@media (max-width:1000px)'));
+    expect(source, contains('html.apple-phone'));
     expect(source, contains('height:100dvh'));
   });
 
