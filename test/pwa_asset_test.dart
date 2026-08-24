@@ -6,7 +6,7 @@ void main() {
   test('service worker refreshes the offline app shell', () async {
     final source = await File('assets/pwa/sw.js').readAsString();
 
-    expect(source, contains("const CACHE = 'work-experience-pwa-v8'"));
+    expect(source, contains("const CACHE = 'work-experience-pwa-v9'"));
     expect(source, contains("cache.put('/app-shell', response.clone())"));
     expect(source, contains('self.skipWaiting()'));
     expect(source, contains('self.clients.claim()'));
@@ -59,5 +59,30 @@ void main() {
     expect(page, contains('Pair This App'));
     expect(host, contains("path == '/api/session'"));
     expect(host, contains("localStorage.setItem('fk_key',data.token)"));
+  });
+
+  test('PWA merges sync responses atomically and keeps deletion tombstones',
+      () async {
+    final source = await File('assets/pwa/index.html').readAsString();
+
+    expect(source, contains('_mergeRemoteEntry(remote)'));
+    expect(source, contains('this.db.transaction("entries","readwrite")'));
+    expect(source, contains('this._version(remote)>this._version(current)'));
+    expect(source, contains('for(const e of list) await purgeEntry(e.id)'));
+    expect(source, isNot(contains('for(const e of list) await Storage.del')));
+  });
+
+  test('LAN host serializes mutations and rotates one-time pairing codes',
+      () async {
+    final host =
+        await File('lib/services/lan_host_service.dart').readAsString();
+
+    expect(host, contains('_serializeMutation(() => _sync(r))'));
+    expect(host,
+        contains('await writeBatch(acceptedEntries, acceptedCategories)'));
+    expect(host, contains('Timer.periodic('));
+    expect(host, contains('const Duration(minutes: 10)'));
+    expect(host, contains("script-src 'self' 'nonce-\$_cspNonce'"));
+    expect(host, isNot(contains("script-src 'self' 'unsafe-inline'")));
   });
 }

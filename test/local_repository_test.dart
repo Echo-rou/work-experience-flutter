@@ -53,6 +53,19 @@ void main() {
     expect(restored.meta['lastSyncAt'], 10);
   });
 
+  test('serializes concurrent saves without corrupting the database', () async {
+    final writes = <Future<void>>[];
+    for (var version = 1; version <= 20; version++) {
+      writes.add(repository.save(snapshot('version $version', version)));
+    }
+
+    await Future.wait(writes);
+    final restored = await repository.load();
+
+    expect(restored.entries.single.contentItems.first, 'version 20');
+    expect(restored.meta['lastSyncAt'], 20);
+    expect(await File('${database.path}.tmp').exists(), isFalse);
+  });
   test('keeps five rotating backups and recovers the newest valid copy',
       () async {
     for (var version = 1; version <= 7; version++) {

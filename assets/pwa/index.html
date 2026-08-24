@@ -505,7 +505,7 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,9); }
+function uid(){ return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,9)); }
 function pad(n){ return n<10 ? "0"+n : ""+n; }
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function fmtTime(ts){ const d=new Date(ts); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes()); }
@@ -605,9 +605,9 @@ function renderMarkdown(src){
 /* ---------------- 3. Storage (always local-first; HTTPS LAN sync in background) ---------------- */
 const DB_NAME="fengkong_kb", DB_VER=2;
 const Storage={
-  mode:"idb", db:null, err:null, key:"", syncing:false, lastSyncAt:0,
+  mode:"idb", db:null, err:null, key:"", syncing:false, lastSyncAt:0, clockOffset:0, lastVersion:0,
   open(){
-    try{ this.key=localStorage.getItem("fk_key")||""; }catch(e){}
+    try{ this.key=localStorage.getItem("fk_key")||""; this.clockOffset=Number(localStorage.getItem("fk_clock_offset"))||0; }catch(e){}
     return this._openIdb();
   },
   _openIdb(){
@@ -654,7 +654,7 @@ const Storage={
     if(this.mode==="ls"){
       const o=this._lsRead(store);
       o[store==="categories"?val.name:(store==="meta"?val.key:val.id)]=val;
-      this._lsWrite(store,o); return Promise.resolve();
+      this._lsWrite(store,o); if(!this.syncing) queueSync(); return Promise.resolve();
     }
     return new Promise((res,rej)=>{
       const tx=this.db.transaction(store,"readwrite");
@@ -662,20 +662,46 @@ const Storage={
     });
   },
   del(store,key){
-    if(this.mode==="ls"){ const o=this._lsRead(store); delete o[key]; this._lsWrite(store,o); return Promise.resolve(); }
+    if(this.mode==="ls"){ const o=this._lsRead(store); delete o[key]; this._lsWrite(store,o); if(!this.syncing) queueSync(); return Promise.resolve(); }
     return new Promise((res,rej)=>{
       const tx=this.db.transaction(store,"readwrite");
       tx.objectStore(store).delete(key); tx.oncomplete=()=>{ res(); if(!this.syncing) queueSync(); }; tx.onerror=()=>rej(tx.error);
     });
   },
   clear(store){
-    if(this.mode==="ls"){ this._lsWrite(store,{}); return Promise.resolve(); }
+    if(this.mode==="ls"){ this._lsWrite(store,{}); if(!this.syncing) queueSync(); return Promise.resolve(); }
     return new Promise((res,rej)=>{
       const tx=this.db.transaction(store,"readwrite");
       tx.objectStore(store).clear(); tx.oncomplete=()=>{ res(); if(!this.syncing) queueSync(); }; tx.onerror=()=>rej(tx.error);
     });
   },
   _version(e){ return Math.max(Number(e&&e.updatedAt)||0,Number(e&&e.deletedAt)||0); },
+  versionNow(previous){
+    const adjusted=Math.floor(Date.now()+this.clockOffset), floor=Number(previous)||0;
+    this.lastVersion=Math.max(adjusted,this.lastVersion+1,floor+1);
+    return this.lastVersion;
+  },
+  _mergeRemoteEntry(remote){
+    if(this.mode==="ls"){
+      const all=this._lsRead("entries"), current=all[remote.id];
+      if(!current||this._version(remote)>this._version(current)){
+        all[remote.id]=remote; this._lsWrite("entries",all);
+      }
+      return Promise.resolve();
+    }
+    return new Promise((resolve,reject)=>{
+      const tx=this.db.transaction("entries","readwrite"), store=tx.objectStore("entries");
+      const request=store.get(remote.id);
+      request.onsuccess=()=>{
+        const current=request.result;
+        if(!current||this._version(remote)>this._version(current)) store.put(remote);
+      };
+      request.onerror=()=>reject(request.error);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error||new Error("Sync merge aborted"));
+    });
+  },
   async sync(){
     if(this.syncing||!this.key) return false;
     this.syncing=true;
@@ -683,10 +709,13 @@ const Storage={
       const entries=await this.getAll("entries");
       const categories=await this.getAll("categories");
       const data=await this._req("POST","/api/sync",{entries:entries,categories:categories});
-      const localById=new Map(entries.map(e=>[e.id,e]));
+      const serverTime=Number(data.serverTime);
+      if(Number.isFinite(serverTime)&&serverTime>0){
+        this.clockOffset=serverTime-Date.now();
+        try{ localStorage.setItem("fk_clock_offset",String(this.clockOffset)); }catch(e){}
+      }
       for(const remote of (data.entries||[])){
-        const local=localById.get(remote.id);
-        if(!local||this._version(remote)>=this._version(local)) await this.put("entries",remote);
+        if(remote&&remote.id) await this._mergeRemoteEntry(remote);
       }
       const localCats=new Set(categories.map(c=>c.name));
       for(const remote of (data.categories||[])){
@@ -759,7 +788,7 @@ async function saveMeta(key){
 
 /* ---------------- 5. Entry ops ---------------- */
 async function saveEntry(data){
-  const now=Date.now();
+  const now=Storage.versionNow();
   let e;
   if(data.id){
     e=entryById(data.id);
@@ -789,7 +818,7 @@ async function saveEntry(data){
 }
 async function toggleFavorite(id){
   const e=entryById(id); if(!e) return;
-  e.favorite=!e.favorite; e.updatedAt=Date.now();
+  e.favorite=!e.favorite; e.updatedAt=Storage.versionNow(e.updatedAt);
   await Storage.put("entries",e);
 }
 async function addTodo(text){
@@ -799,29 +828,29 @@ async function addTodo(text){
 }
 async function toggleTodo(id){
   const e=entryById(id); if(!e||e.kind!=="todo") return;
-  e.completed=!e.completed; e.updatedAt=Date.now();
+  e.completed=!e.completed; e.updatedAt=Storage.versionNow(e.updatedAt);
   await Storage.put("entries",e);
 }
 async function removeTodo(id){
   const e=entryById(id); if(!e||e.kind!=="todo") return;
-  const now=Date.now();
+  const now=Storage.versionNow();
   Object.assign(e,{deleted:true,purged:true,deletedAt:now,updatedAt:now});
   await Storage.put("entries",e);
 }
 async function softDelete(id){
   const e=entryById(id); if(!e) return;
-  const now=Date.now();
+  const now=Storage.versionNow();
   e.deleted=true; e.deletedAt=now; e.updatedAt=now;
   await Storage.put("entries",e);
 }
 async function restoreEntry(id){
   const e=entryById(id); if(!e) return;
-  e.deleted=false; e.updatedAt=Date.now(); delete e.deletedAt;
+  e.deleted=false; e.updatedAt=Storage.versionNow(e.updatedAt); delete e.deletedAt;
   await Storage.put("entries",e);
 }
 async function purgeEntry(id){
   const e=entryById(id); if(!e) return;
-  const now=Date.now();
+  const now=Storage.versionNow();
   Object.assign(e,{deleted:true,purged:true,deletedAt:now,updatedAt:now});
   await Storage.put("entries",e);
 }
@@ -1001,7 +1030,7 @@ function renderHome(v){
   const days=new Set(list.map(e=>e.date)).size;
   let html="";
   if(Storage.mode==="ls"){
-    html+='<div class="banner err">⚠ '+escapeHtml(Storage.err||"Local database unavailable")+'. Data is stored in this browser only (localStorage) and will NOT sync. Please export backups regularly.</div>';
+    html+='<div class="banner err">⚠ '+escapeHtml(Storage.err||"Local database unavailable")+'. The fallback localStorage is active. Sync may be delayed and storage capacity is limited; export backups regularly.</div>';
   }
   if(state.corruptCount>0){
     html+='<div class="banner err">⚠ '+state.corruptCount+' corrupted record(s) were skipped. Restore from a backup if this is unexpected.</div>';
@@ -1148,7 +1177,7 @@ function renderCategories(v){
       const c=state.categories.find(x=>x.name===old);
       await Storage.del("categories",old);
       c.name=nn; await Storage.put("categories",c);
-      for(const e of state.entries){ if(e.category===old){ e.category=nn; e.updatedAt=Date.now(); await Storage.put("entries",e); } }
+      for(const e of state.entries){ if(e.category===old){ e.category=nn; e.updatedAt=Storage.versionNow(e.updatedAt); await Storage.put("entries",e); } }
       state.meta.recentCats=state.meta.recentCats.map(x=>x===old?nn:x);
       await saveMeta("recentCats");
       toast("Category renamed");
@@ -1165,7 +1194,7 @@ function renderCategories(v){
       if(!ok) return;
       state.categories=state.categories.filter(c=>c.name!==name);
       await Storage.del("categories",name);
-      for(const e of state.entries){ if(e.category===name){ e.category="Uncategorized"; e.updatedAt=Date.now(); await Storage.put("entries",e); } }
+      for(const e of state.entries){ if(e.category===name){ e.category="Uncategorized"; e.updatedAt=Storage.versionNow(e.updatedAt); await Storage.put("entries",e); } }
       state.meta.recentCats=state.meta.recentCats.filter(x=>x!==name);
       await saveMeta("recentCats");
       toast("Category deleted");
@@ -1195,7 +1224,7 @@ function renderTrash(v){
   if(et) et.onclick=async ()=>{
     const ok=await confirmDialog("Empty Trash","This will permanently delete "+list.length+" record(s). This cannot be undone. Continue?",{danger:true,okText:"Delete all forever"});
     if(!ok) return;
-    for(const e of list) await Storage.del("entries",e.id);
+    for(const e of list) await purgeEntry(e.id);
     state.entries=state.entries.filter(e=>!e.deleted);
     toast("Trash emptied");
     render();
@@ -1555,6 +1584,7 @@ function onImportFile(ev){
   const file=ev.target.files[0];
   ev.target.value="";
   if(!file) return;
+  if(file.size>20*1024*1024){ toast("Import failed: file exceeds the 20 MiB limit",true); return; }
   const reader=new FileReader();
   reader.onload=async ()=>{
     let data;

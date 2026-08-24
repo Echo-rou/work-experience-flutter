@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,6 +24,7 @@ class LocalRepository {
   static const backupCount = 5;
 
   File? _file;
+  Future<void> _saveQueue = Future<void>.value();
 
   Future<File> get _database async {
     if (_file != null) return _file!;
@@ -60,10 +62,10 @@ class LocalRepository {
     }
   }
 
-  Future<void> save(LibrarySnapshot snapshot) async {
-    final file = await _database;
-    final temp = File('${file.path}.tmp');
-    final payload = {
+  Future<void> save(LibrarySnapshot snapshot) {
+    // Encode immediately so a queued save cannot observe collections that were
+    // mutated by a later UI or LAN operation.
+    final encoded = const JsonEncoder.withIndent('  ').convert({
       'schemaVersion': 1,
       'entries': {
         for (final entry in snapshot.entries) entry.id: entry.toJson()
@@ -76,10 +78,23 @@ class LocalRepository {
           },
       },
       'meta': snapshot.meta,
-    };
-    await temp.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(payload),
-        flush: true);
+    });
+    final result = Completer<void>();
+    _saveQueue = _saveQueue.then((_) async {
+      try {
+        await _saveEncoded(encoded);
+        result.complete();
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    return result.future;
+  }
+
+  Future<void> _saveEncoded(String encoded) async {
+    final file = await _database;
+    final temp = File('${file.path}.tmp');
+    await temp.writeAsString(encoded, flush: true);
     if (await file.exists()) {
       await _rotateBackups(file);
     }

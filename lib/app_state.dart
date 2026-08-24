@@ -365,10 +365,13 @@ class WorkLibraryState extends ChangeNotifier {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['dwr', 'json'],
-      withData: true,
+      withData: false,
     );
     if (result == null || result.files.isEmpty) return null;
     final picked = result.files.single;
+    if (picked.size > 20 * 1024 * 1024) {
+      throw const FormatException('Backup file exceeds the 20 MiB limit');
+    }
     final bytes = picked.bytes ??
         (picked.path == null ? null : await File(picked.path!).readAsBytes());
     if (bytes == null) throw Exception('Could not read the backup file');
@@ -491,6 +494,8 @@ class WorkLibraryState extends ChangeNotifier {
       writeStore: _writeHostedStore,
       deleteStoreValue: _deleteHostedValue,
       clearStore: _clearHostedStore,
+      writeBatch: _writeHostedBatch,
+      onPairingCodeChanged: notifyListeners,
     );
     try {
       await _hostService!.start();
@@ -523,6 +528,35 @@ class WorkLibraryState extends ChangeNotifier {
             .toList(),
         _ => const [],
       };
+
+  Future<void> _writeHostedBatch(List<Map<String, dynamic>> entries,
+      List<Map<String, dynamic>> categories) async {
+    final parsedEntries = entries.map(WorkEntry.fromJson).toList();
+    if (parsedEntries.any((entry) => entry.id.isEmpty)) {
+      throw const FormatException('missing entry id');
+    }
+    final categoryNames = categories
+        .map((value) => value['name']?.toString().trim() ?? '')
+        .toList();
+    if (categoryNames.any((name) => name.isEmpty)) {
+      throw const FormatException('missing category name');
+    }
+    for (final entry in parsedEntries) {
+      final current = findEntry(entry.id);
+      if (current == null) {
+        _entries.add(entry);
+      } else {
+        _replace(entry);
+      }
+      if (entry.category.isNotEmpty && !_categories.contains(entry.category)) {
+        _categories.add(entry.category);
+      }
+    }
+    for (final name in categoryNames) {
+      if (!_categories.contains(name)) _categories.add(name);
+    }
+    await _persist();
+  }
 
   Future<void> _writeHostedStore(
       String store, Map<String, dynamic> value) async {

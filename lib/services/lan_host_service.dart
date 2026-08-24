@@ -13,6 +13,8 @@ typedef StoreWriter = Future<void> Function(
     String store, Map<String, dynamic> value);
 typedef StoreDelete = Future<void> Function(String store, String key);
 typedef StoreClear = Future<void> Function(String store);
+typedef StoreBatchWriter = Future<void> Function(
+    List<Map<String, dynamic>> entries, List<Map<String, dynamic>> categories);
 
 class LanHostService {
   LanHostService(
@@ -21,6 +23,8 @@ class LanHostService {
       required this.writeStore,
       required this.deleteStoreValue,
       required this.clearStore,
+      required this.writeBatch,
+      this.onPairingCodeChanged,
       this.port = 8732,
       this.setupPort = 8731});
   final String token;
@@ -28,12 +32,18 @@ class LanHostService {
   final StoreWriter writeStore;
   final StoreDelete deleteStoreValue;
   final StoreClear clearStore;
+  final StoreBatchWriter writeBatch;
+  final void Function()? onPairingCodeChanged;
   final int port, setupPort;
   HttpServer? _server, _setupServer;
   String _html = '', _manifest = '', _serviceWorker = '';
   List<int> _icon = const [], _rootCertificate = const [];
   String _rootCertificateThumbprint = '';
+  final String _cspNonce = base64
+      .encode(List<int>.generate(18, (_) => Random.secure().nextInt(256)));
   final Map<String, List<int>> _pairFailures = {}, _authFailures = {};
+  Future<void> _mutationQueue = Future<void>.value();
+  Timer? _pairingCodeTimer;
   String? address, setupAddress;
   String pairingCode = '';
   bool get running => _server != null;
@@ -45,7 +55,9 @@ class LanHostService {
     _serviceWorker = await rootBundle.loadString('assets/pwa/sw.js');
     final icon = await rootBundle.load('assets/pwa/pwa-icon.png');
     _icon = icon.buffer.asUint8List(icon.offsetInBytes, icon.lengthInBytes);
-    pairingCode = Random.secure().nextInt(100000000).toString().padLeft(8, '0');
+    _rotatePairingCode();
+    _pairingCodeTimer = Timer.periodic(
+        const Duration(minutes: 10), (_) => _rotatePairingCode());
     final ip = await _findLanAddress();
     final certificateService = LocalCertificateService();
     final cert = await certificateService.prepare(ip);
@@ -77,6 +89,8 @@ class LanHostService {
     address = null;
     setupAddress = null;
     pairingCode = '';
+    _pairingCodeTimer?.cancel();
+    _pairingCodeTimer = null;
     _pairFailures.clear();
     _authFailures.clear();
     await Future.wait([
@@ -188,7 +202,9 @@ class LanHostService {
         return await _json(
             r, {'ok': true, 'time': DateTime.now().millisecondsSinceEpoch});
       }
-      if (r.method == 'POST' && path == '/api/sync') return await _sync(r);
+      if (r.method == 'POST' && path == '/api/sync') {
+        return await _serializeMutation(() => _sync(r));
+      }
       final s = r.uri.pathSegments;
       if (s.length >= 3 &&
           s[0] == 'api' &&
@@ -203,15 +219,16 @@ class LanHostService {
           if (b is! Map) {
             return await _json(r, {'error': 'invalid body'}, status: 400);
           }
-          await writeStore(store, Map<String, dynamic>.from(b));
+          await _serializeMutation(
+              () => writeStore(store, Map<String, dynamic>.from(b)));
           return await _json(r, {'ok': true});
         }
         if (r.method == 'DELETE' && s.length == 4) {
-          await deleteStoreValue(store, s[3]);
+          await _serializeMutation(() => deleteStoreValue(store, s[3]));
           return await _json(r, {'ok': true});
         }
         if (r.method == 'POST' && s.length == 4 && s[3] == 'clear') {
-          await clearStore(store);
+          await _serializeMutation(() => clearStore(store));
           return await _json(r, {'ok': true});
         }
       }
@@ -238,6 +255,7 @@ class LanHostService {
       return _json(r, {'error': 'Incorrect pairing code'}, status: 403);
     }
     _pairFailures.remove(remote);
+    _rotatePairingCode();
     r.response.cookies.add(Cookie('fk_session', token)
       ..httpOnly = true
       ..secure = true
@@ -277,13 +295,14 @@ class LanHostService {
       for (final e in readStore('entries'))
         if ((e['id']?.toString() ?? '').isNotEmpty) e['id'].toString(): e
     };
+    final acceptedEntries = <Map<String, dynamic>>[];
     if (body['entries'] is List) {
       for (final raw in (body['entries'] as List).whereType<Map>()) {
         final e = Map<String, dynamic>.from(raw),
             id = raw['id']?.toString() ?? '';
         if (id.isNotEmpty &&
             (current[id] == null || _version(e) > _version(current[id]!))) {
-          await writeStore('entries', e);
+          acceptedEntries.add(e);
           current[id] = e;
         }
       }
@@ -292,16 +311,20 @@ class LanHostService {
         .map((e) => e['name']?.toString() ?? '')
         .where((e) => e.isNotEmpty)
         .toSet();
+    final acceptedCategories = <Map<String, dynamic>>[];
     if (body['categories'] is List) {
       for (final raw in body['categories'] as List) {
         final name = (raw is Map ? raw['name'] : raw)?.toString().trim() ?? '';
         if (name.isNotEmpty && names.add(name)) {
-          await writeStore('categories', {
+          acceptedCategories.add({
             'name': name,
             'createdAt': DateTime.now().millisecondsSinceEpoch
           });
         }
       }
+    }
+    if (acceptedEntries.isNotEmpty || acceptedCategories.isNotEmpty) {
+      await writeBatch(acceptedEntries, acceptedCategories);
     }
     return _json(r, {
       'entries': readStore('entries'),
@@ -319,6 +342,9 @@ class LanHostService {
 
   bool _validStore(String v) => v == 'entries' || v == 'categories';
   Future<Object?> _readJson(HttpRequest r) async {
+    if (r.contentLength > 20 * 1024 * 1024) {
+      throw const FormatException('request too large');
+    }
     final bytes = <int>[];
     await for (final chunk in r) {
       bytes.addAll(chunk);
@@ -333,7 +359,9 @@ class LanHostService {
       _text(r, jsonEncode(value), status: status, type: ContentType.json);
   Future<void> _text(HttpRequest r, String value,
       {int status = 200, required ContentType type}) async {
-    final bytes = utf8.encode(value);
+    final body =
+        type.mimeType == ContentType.html.mimeType ? _withNonce(value) : value;
+    final bytes = utf8.encode(body);
     r.response.statusCode = status;
     _applyHeaders(r.response);
     r.response.headers.contentType = type;
@@ -351,7 +379,28 @@ class LanHostService {
         .set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
     response.headers.set('Content-Security-Policy',
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+        "default-src 'self'; script-src 'self' 'nonce-$_cspNonce'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  }
+
+  String _withNonce(String html) => html
+      .replaceAll('<script>', '<script nonce="$_cspNonce">')
+      .replaceAll('<style>', '<style nonce="$_cspNonce">');
+  void _rotatePairingCode() {
+    pairingCode = Random.secure().nextInt(100000000).toString().padLeft(8, '0');
+    _pairFailures.clear();
+    onPairingCodeChanged?.call();
+  }
+
+  Future<T> _serializeMutation<T>(Future<T> Function() operation) {
+    final result = Completer<T>();
+    _mutationQueue = _mutationQueue.then((_) async {
+      try {
+        result.complete(await operation());
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    return result.future;
   }
 
   Future<String> _findLanAddress() async {
