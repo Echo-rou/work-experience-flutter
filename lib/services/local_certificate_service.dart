@@ -8,10 +8,12 @@ class LocalCertificateBundle {
   const LocalCertificateBundle(
       {required this.pfxPath,
       required this.pfxPassword,
-      required this.rootCertificatePath});
+      required this.rootCertificatePath,
+      required this.rootCertificateThumbprint});
   final String pfxPath;
   final String pfxPassword;
   final String rootCertificatePath;
+  final String rootCertificateThumbprint;
 }
 
 class LocalCertificateService {
@@ -89,10 +91,21 @@ Write-Output $root.Thumbprint
           detail.isEmpty ? 'Certificate generation failed' : detail,
           result.exitCode);
     }
+    final thumbprint = result.stdout
+        .toString()
+        .trim()
+        .split(RegExp(r'\s+'))
+        .last
+        .replaceAll(RegExp('[^0-9A-Fa-f]'), '')
+        .toUpperCase();
+    if (thumbprint.length != 40) {
+      throw const FormatException('Certificate thumbprint was not returned');
+    }
     return LocalCertificateBundle(
         pfxPath: pfx.path,
         pfxPassword: password,
-        rootCertificatePath: root.path);
+        rootCertificatePath: root.path,
+        rootCertificateThumbprint: thumbprint);
   }
 
   Future<void> cleanupServerCertificates() async {

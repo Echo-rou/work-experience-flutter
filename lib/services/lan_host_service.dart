@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/services.dart';
 
+import 'apple_mobileconfig.dart';
 import 'local_certificate_service.dart';
 
 typedef StoreReader = List<Map<String, dynamic>> Function(String store);
@@ -31,6 +32,7 @@ class LanHostService {
   HttpServer? _server, _setupServer;
   String _html = '', _manifest = '', _serviceWorker = '';
   List<int> _icon = const [], _rootCertificate = const [];
+  String _rootCertificateThumbprint = '';
   final Map<String, List<int>> _pairFailures = {}, _authFailures = {};
   String? address, setupAddress;
   String pairingCode = '';
@@ -48,6 +50,7 @@ class LanHostService {
     final certificateService = LocalCertificateService();
     final cert = await certificateService.prepare(ip);
     _rootCertificate = await File(cert.rootCertificatePath).readAsBytes();
+    _rootCertificateThumbprint = cert.rootCertificateThumbprint;
     final context = SecurityContext(withTrustedRoots: false);
     try {
       context.useCertificateChain(cert.pfxPath, password: cert.pfxPassword);
@@ -84,6 +87,19 @@ class LanHostService {
 
   Future<void> _handleSetup(HttpRequest r, String ip) async {
     try {
+      if (r.method == 'GET' &&
+          r.uri.path == '/work-experience-root.mobileconfig') {
+        final profile = buildAppleRootCertificateProfile(
+          certificateBytes: _rootCertificate,
+          certificateThumbprint: _rootCertificateThumbprint,
+          computerName: Platform.localHostname,
+        );
+        r.response.headers.set('content-disposition',
+            'attachment; filename="work-experience-root.mobileconfig"');
+        return await _text(r, profile,
+            type: ContentType('application', 'x-apple-aspen-config',
+                charset: 'utf-8'));
+      }
       if (r.method == 'GET' && r.uri.path == '/work-experience-root.cer') {
         _applyHeaders(r.response);
         r.response.headers.contentType =
@@ -96,10 +112,11 @@ class LanHostService {
       if (r.method != 'GET' || r.uri.path != '/setup') {
         return await _json(r, {'error': 'not found'}, status: 404);
       }
-      final certUrl = 'http://$ip:$setupPort/work-experience-root.cer';
+      final profileUrl =
+          'http://$ip:$setupPort/work-experience-root.mobileconfig';
       final pairUrl = 'https://$ip:$port/pair';
       final page =
-          '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Work Experience Library Setup</title><style>body{font-family:-apple-system,sans-serif;max-width:680px;margin:0 auto;padding:28px 22px;color:#202838;line-height:1.7}.card{border:1px solid #ddd6c8;border-radius:14px;padding:18px;margin:16px 0}a{display:block;text-align:center;background:#1b2740;color:white;padding:12px;border-radius:10px;text-decoration:none;margin:12px 0}.muted{color:#6f7784;font-size:13px}</style></head><body><h1>Work Experience Library · iPhone Setup</h1><div class="card"><b>Step 1: Install the dedicated certificate</b><a href="$certUrl">Download Certificate</a><p>Open Settings &gt; Profile Downloaded and install it. Then go to Settings &gt; General &gt; About &gt; Certificate Trust Settings and enable full trust for <b>Work Experience Library Local Root</b>.</p></div><div class="card"><b>Step 2: Pair securely over HTTPS</b><a href="$pairUrl">Open Secure Pairing</a><p>Enter the 8-digit pairing code shown in the desktop app, then use Safari Share &gt; Add to Home Screen.</p></div><p class="muted">The HTTP setup page contains no sync key or private data. The profile contains only the public root certificate and no MDM, VPN, account, or device-management settings.</p></body></html>''';
+          '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Work Experience Library Setup</title><style>body{font-family:-apple-system,sans-serif;max-width:680px;margin:0 auto;padding:max(28px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));color:#202838;line-height:1.7}.card{border:1px solid #ddd6c8;border-radius:14px;padding:18px;margin:16px 0}a{display:block;text-align:center;background:#1b2740;color:white;padding:12px;border-radius:10px;text-decoration:none;margin:12px 0}.muted{color:#6f7784;font-size:13px}.step{color:#a97832;font-weight:700}</style></head><body><h1>Work Experience Library · iPhone Setup</h1><div class="card"><div class="step">Step 1 · Download and install the Apple profile</div><a href="$profileUrl">Download Certificate Profile (.mobileconfig)</a><p>Tap <b>Allow</b>. Within 8 minutes, open <b>Settings → Profile Downloaded</b> (or <b>General → VPN &amp; Device Management</b>), open the Work Experience Library profile, and tap <b>Install</b>.</p><p class="muted">The profile contains only this computer's public root certificate. It contains no VPN, MDM, account, or private key.</p></div><div class="card"><div class="step">Step 2 · Enable full certificate trust</div><p>Open <b>Settings → General → About → Certificate Trust Settings</b>, then enable full trust for <b>Work Experience Library Local Root</b>. If the switch is missing, Step 1 was not installed.</p></div><div class="card"><div class="step">Step 3 · Pair over trusted HTTPS</div><a href="$pairUrl">Open Secure Pairing</a><p>The pairing page must open <b>without</b> a “Not Private” warning. Enter the 8-digit code shown in the desktop app, then use Safari <b>Share → Add to Home Screen</b>.</p></div><p class="muted">Use Safari on a trusted private Wi-Fi. Do not choose “Visit Website” to bypass a certificate warning.</p></body></html>''';
       return await _text(r, page, type: ContentType.html);
     } catch (e) {
       try {
