@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <shellapi.h>
 
 #include "resource.h"
 
@@ -17,6 +18,11 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT kTrayOpenCommand = 0x5001;
+constexpr UINT kTrayExitCommand = 0x5002;
+constexpr UINT kTrayIconId = 1;
+const UINT kTaskbarCreatedMessage = RegisterWindowMessage(L"TaskbarCreated");
 
 /// Registry key for app theme preference.
 ///
@@ -146,7 +152,11 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
-  return OnCreate();
+  if (!OnCreate()) {
+    return false;
+  }
+  AddTrayIcon();
+  return true;
 }
 
 bool Win32Window::Show() {
@@ -178,8 +188,43 @@ Win32Window::MessageHandler(HWND hwnd,
                             UINT const message,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
+  if (message == kTaskbarCreatedMessage) {
+    tray_icon_added_ = false;
+    AddTrayIcon();
+    return 0;
+  }
+
   switch (message) {
+    case WM_CLOSE:
+      if (!exit_requested_) {
+        ShowWindow(hwnd, SW_HIDE);
+        NotifyStillRunning();
+        return 0;
+      }
+      break;
+
+    case kTrayCallbackMessage:
+      if (lparam == WM_LBUTTONDBLCLK) {
+        RestoreFromTray();
+      } else if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU) {
+        ShowTrayMenu();
+      }
+      return 0;
+
+    case WM_COMMAND:
+      if (LOWORD(wparam) == kTrayOpenCommand) {
+        RestoreFromTray();
+        return 0;
+      }
+      if (LOWORD(wparam) == kTrayExitCommand) {
+        exit_requested_ = true;
+        RemoveTrayIcon();
+        DestroyWindow(hwnd);
+        return 0;
+      }
+      break;
     case WM_DESTROY:
+      RemoveTrayIcon();
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -259,6 +304,74 @@ HWND Win32Window::GetHandle() {
   return window_handle_;
 }
 
+void Win32Window::AddTrayIcon() {
+  if (tray_icon_added_ || window_handle_ == nullptr) {
+    return;
+  }
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+  data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  data.uCallbackMessage = kTrayCallbackMessage;
+  data.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  wcscpy_s(data.szTip, L"Work Experience Library - LAN Sync");
+  tray_icon_added_ = Shell_NotifyIconW(NIM_ADD, &data) == TRUE;
+}
+
+void Win32Window::RemoveTrayIcon() {
+  if (!tray_icon_added_) {
+    return;
+  }
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+  Shell_NotifyIconW(NIM_DELETE, &data);
+  tray_icon_added_ = false;
+}
+
+void Win32Window::RestoreFromTray() {
+  if (window_handle_ == nullptr) {
+    return;
+  }
+  ShowWindow(window_handle_, SW_RESTORE);
+  SetForegroundWindow(window_handle_);
+}
+
+void Win32Window::ShowTrayMenu() {
+  if (window_handle_ == nullptr) {
+    return;
+  }
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  HMENU menu = CreatePopupMenu();
+  AppendMenuW(menu, MF_STRING, kTrayOpenCommand, L"Open");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kTrayExitCommand, L"Exit completely");
+  SetForegroundWindow(window_handle_);
+  TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN,
+                 cursor.x, cursor.y, 0, window_handle_, nullptr);
+  DestroyMenu(menu);
+  PostMessage(window_handle_, WM_NULL, 0, 0);
+}
+
+void Win32Window::NotifyStillRunning() {
+  if (close_notification_shown_ || !tray_icon_added_) {
+    return;
+  }
+  NOTIFYICONDATAW data{};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+  data.uFlags = NIF_INFO;
+  wcscpy_s(data.szInfoTitle, L"Work Experience Library");
+  wcscpy_s(data.szInfo,
+           L"Still running in the system tray so LAN sync stays available.");
+  data.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+  Shell_NotifyIconW(NIM_MODIFY, &data);
+  close_notification_shown_ = true;
+}
 void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
 }

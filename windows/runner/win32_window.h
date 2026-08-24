@@ -90,6 +90,17 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // Keeps LAN sync alive when the user closes the visible window.
+  void AddTrayIcon();
+  void RemoveTrayIcon();
+  void RestoreFromTray();
+  void ShowTrayMenu();
+  void NotifyStillRunning();
+
+  bool tray_icon_added_ = false;
+  bool exit_requested_ = false;
+  bool close_notification_shown_ = false;
+
   bool quit_on_close_ = false;
 
   // window handle for top level window.
