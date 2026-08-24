@@ -6,7 +6,7 @@ void main() {
   test('service worker refreshes the offline app shell', () async {
     final source = await File('assets/pwa/sw.js').readAsString();
 
-    expect(source, contains("const CACHE = 'work-experience-pwa-v6'"));
+    expect(source, contains("const CACHE = 'work-experience-pwa-v7'"));
     expect(source, contains("cache.put('/app-shell', response.clone())"));
     expect(source, contains('self.skipWaiting()'));
     expect(source, contains('self.clients.claim()'));
@@ -39,5 +39,22 @@ void main() {
     expect(source, contains('id="btn-new-top" aria-label="Add a new record"'));
     expect(source, contains('id="quick-new" aria-label="Add a new record"'));
     expect(source, contains('touch-action:manipulation'));
+    expect(source, contains('list="category-options"'));
+    expect(source, contains('Choose or enter a new category'));
+  });
+
+  test('Home Screen PWA can pair its isolated iPhone storage', () async {
+    final manifest =
+        await File('assets/pwa/manifest.webmanifest').readAsString();
+    final page = await File('assets/pwa/index.html').readAsString();
+    final host =
+        await File('lib/services/lan_host_service.dart').readAsString();
+
+    expect(manifest, contains('"start_url": "/pair"'));
+    expect(page, contains('if(!Storage.key&&navigator.onLine)'));
+    expect(page, contains('location.replace("/pair")'));
+    expect(page, contains('Pair This App'));
+    expect(host, contains("path == '/api/session'"));
+    expect(host, contains("localStorage.setItem('fk_key',data.token)"));
   });
 }

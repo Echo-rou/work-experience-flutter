@@ -2,7 +2,7 @@
   "name": "Work Experience Library",
   "short_name": "Experience",
   "description": "Capture, reflect on, and reuse practical experience",
-  "start_url": "/",
+  "start_url": "/pair",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f6f4ef",

@@ -57,6 +57,45 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     super.dispose();
   }
 
+  Widget _buildCategoryInput() {
+    final categories = widget.state.categories.toSet().toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return MenuAnchor(
+      menuChildren: [
+        for (final category in categories)
+          MenuItemButton(
+            onPressed: () {
+              _category.text = category;
+              _category.selection =
+                  TextSelection.collapsed(offset: category.length);
+            },
+            child: Text(category),
+          ),
+      ],
+      builder: (context, menuController, child) => TextField(
+        key: const ValueKey('record-category'),
+        controller: _category,
+        onTap: categories.isEmpty
+            ? null
+            : () {
+                if (!menuController.isOpen) menuController.open();
+              },
+        decoration: InputDecoration(
+          hintText: 'Choose or enter a new category',
+          suffixIcon: categories.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Show existing categories',
+                  onPressed: () => menuController.isOpen
+                      ? menuController.close()
+                      : menuController.open(),
+                  icon: const Icon(Icons.arrow_drop_down),
+                ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => PopScope<Object?>(
         canPop: !_dirty || _submitting,
@@ -106,13 +145,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           ),
                           _Field(
                             label: 'Category',
-                            child: TextField(
-                              key: const ValueKey('record-category'),
-                              controller: _category,
-                              decoration: const InputDecoration(
-                                hintText: 'Enter or change any category',
-                              ),
-                            ),
+                            child: _buildCategoryInput(),
                           ),
                           _Field(
                             label: 'Tags',

@@ -1286,6 +1286,9 @@ function renderEditor(v){
       : (draft&&Array.isArray(draft.points)?draft.points.slice():[])
   };
   if(!init.points.length) init.points.push("");
+  const categoryOptions=state.categories
+    .map(c=>'<option value="'+escapeHtml(c.name)+'"></option>')
+    .join("");
   let html=
     '<div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
       '<button class="btn btn-ghost btn-sm" id="ed-back">← Back</button>'+
@@ -1296,7 +1299,8 @@ function renderEditor(v){
     '<div class="field"><label>Date</label><input type="date" id="f-date" value="'+escapeHtml(init.date)+'"></div>'+
     '<div class="field-row">'+
       '<div class="field"><label>Category</label>'+
-        '<input type="text" id="f-category" placeholder="Enter or change any category" value="'+escapeHtml(init.category)+'">'+
+        '<input type="text" id="f-category" list="category-options" placeholder="Choose or enter a new category" value="'+escapeHtml(init.category)+'">'+
+        '<datalist id="category-options">'+categoryOptions+'</datalist>'+
       '</div>'+
       '<div class="field"><label>Link (optional)</label><input type="url" id="f-link" placeholder="https://…" value="'+escapeHtml(init.link)+'"></div>'+
     '</div>'+
@@ -1431,9 +1435,11 @@ function renderEditor(v){
 /* ---- Settings ---- */
 function renderSettings(v){
   const hasLock=!!state.meta.lockHash;
-  const syncText=Storage.lastSyncAt
-    ? "Last synced "+fmtTime(Storage.lastSyncAt)
-    : "Not synced yet. Your records are still saved on this iPhone.";
+  const syncText=!Storage.key
+    ? "This Home Screen app must be paired once before LAN sync."
+    : Storage.lastSyncAt
+      ? "Last synced "+fmtTime(Storage.lastSyncAt)
+      : "Not synced yet. Your records are still saved on this iPhone.";
 
   let html='<div class="page-title">Settings</div><div class="page-desc">Offline storage, sync, backup, and privacy.</div>';
 
@@ -1450,7 +1456,7 @@ function renderSettings(v){
 
   html+='<div class="card set-block"><h3>LAN Sync</h3>'+
     '<p>The app works offline. When the computer is online on the same Wi-Fi, newer changes merge automatically.</p>'+
-    '<div class="set-row"><button class="btn btn-primary btn-sm" id="sync-now">Sync Now</button>'+
+    '<div class="set-row"><button class="btn btn-primary btn-sm" id="sync-now">'+(Storage.key?'Sync Now':'Pair This App')+'</button>'+
     '<span id="sync-status" style="font-size:13px;color:var(--ink-soft)">'+escapeHtml(syncText)+'</span></div></div>';
 
   html+='<div class="card set-block"><h3>Screen Lock (not encryption)</h3>'+
@@ -1471,6 +1477,7 @@ function renderSettings(v){
   $("#set-import").onclick=()=>$("#import-file").click();
   $("#import-file").addEventListener("change",onImportFile);
   $("#sync-now").onclick=async ()=>{
+    if(!Storage.key){ location.href="/pair"; return; }
     const status=$("#sync-status");
     status.textContent="Syncing…";
     await syncNow(false);
@@ -1679,6 +1686,10 @@ async function syncNow(silent){
       .catch(e=>console.warn("service worker",e));
   }
   await Storage.open();
+  if(!Storage.key&&navigator.onLine){
+    location.replace("/pair");
+    return;
+  }
   try{
     const savedSync=(await Storage.getAll("meta")).find(m=>m&&m.key==="lastSyncAt");
     Storage.lastSyncAt=Number(savedSync&&savedSync.value)||0;

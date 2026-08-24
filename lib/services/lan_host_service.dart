@@ -128,8 +128,7 @@ class LanHostService {
   }
 
   String get _pairPage =>
-      '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Secure Pairing</title><style>body{font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:38px 22px;color:#202838}.card{border:1px solid #ddd6c8;border-radius:14px;padding:22px}input,button{box-sizing:border-box;width:100%;padding:13px;margin-top:12px;border-radius:9px;font-size:17px}input{border:1px solid #ccc;letter-spacing:4px;text-align:center}button{border:0;background:#1b2740;color:#fff}#msg{min-height:24px;color:#a33;margin-top:12px}</style></head><body><div class="card"><h2>Secure Pairing</h2><p>Enter the 8-digit code displayed in the desktop app.</p><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code"><button id="pair">Pair This iPhone</button><div id="msg"></div></div><script>document.getElementById('pair').onclick=async()=>{const m=document.getElementById('msg');m.textContent='Pairing…';try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('code').value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Pairing failed');localStorage.setItem('fk_key',d.token);location.replace('/')}catch(e){m.textContent=e.message}}</script></body></html>''';
-
+      '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Secure Pairing</title><style>body{font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:max(38px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(38px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));color:#202838}.card{border:1px solid #ddd6c8;border-radius:14px;padding:22px}input,button{box-sizing:border-box;width:100%;padding:13px;margin-top:12px;border-radius:9px;font-size:17px}input{border:1px solid #ccc;letter-spacing:4px;text-align:center}button{border:0;background:#1b2740;color:#fff}#msg{min-height:24px;color:#a33;margin-top:12px}.muted{color:#6f7784;font-size:13px;line-height:1.5}</style></head><body><div class="card"><h2>Pair This Home Screen App</h2><p class="muted">Safari and an iPhone Home Screen web app keep separate local storage. Pair once inside this app so it can securely sync its own offline data.</p><div id="checking">Checking existing pairing…</div><div id="form" hidden><p>Enter the current 8-digit code displayed in the desktop app.</p><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code"><button id="pair">Pair and Sync This App</button></div><div id="msg"></div></div><script>const form=document.getElementById('form'),checking=document.getElementById('checking'),msg=document.getElementById('msg');async function recover(){try{const stored=localStorage.getItem('fk_key')||'';if(stored){const ping=await fetch('/api/ping',{headers:{'X-Key':stored},cache:'no-store'});if(ping.ok){location.replace('/');return}localStorage.removeItem('fk_key')}const session=await fetch('/api/session',{cache:'no-store'});if(session.ok){const data=await session.json();localStorage.setItem('fk_key',data.token);location.replace('/');return}}catch(e){}checking.hidden=true;form.hidden=false;msg.textContent=''}document.getElementById('pair').onclick=async()=>{msg.textContent='Pairing…';try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('code').value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Pairing failed');localStorage.setItem('fk_key',d.token);location.replace('/')}catch(e){msg.textContent=e.message}};recover()</script></body></html>''';
   Future<void> _handleSecure(HttpRequest r) async {
     try {
       final path = r.uri.path;
@@ -137,6 +136,12 @@ class LanHostService {
         return await _text(r, _pairPage, type: ContentType.html);
       }
       if (r.method == 'POST' && path == '/api/pair') return await _pair(r);
+      if (r.method == 'GET' && path == '/api/session') {
+        if (!_pageAuthorized(r)) {
+          return await _json(r, {'error': 'pairing required'}, status: 401);
+        }
+        return await _json(r, {'ok': true, 'token': token});
+      }
       if (r.method == 'GET' && (path == '/' || path == '/index.html')) {
         if (!_pageAuthorized(r)) {
           return await _text(r,

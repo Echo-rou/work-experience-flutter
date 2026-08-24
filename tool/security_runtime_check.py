@@ -23,7 +23,8 @@ profile_status, profile_headers, profile = request(
     'http://127.0.0.1:8731/work-experience-root.mobileconfig')
 certificate_status, _, certificate = request(
     'http://127.0.0.1:8731/work-experience-root.cer')
-pair_status, pair_headers, _ = request('https://127.0.0.1:8732/pair')
+pair_status, pair_headers, pair_page = request('https://127.0.0.1:8732/pair')
+session_status, _, _ = request('https://127.0.0.1:8732/api/session')
 root_status, _, _ = request('https://127.0.0.1:8732/')
 pair_attempts = [
     request(
@@ -55,6 +56,11 @@ result = {
     'certificate_status': certificate_status,
     'profile_certificate_matches_download': root_payload.get('PayloadContent') == certificate,
     'pair_page_status': pair_status,
+    'pair_page_supports_home_screen_recovery': (
+        b'/api/session' in pair_page
+        and b'Pair This Home Screen App' in pair_page
+    ),
+    'session_without_cookie_status': session_status,
     'root_without_cookie_status': root_status,
     'wrong_pairing_attempt_statuses': pair_attempts,
     'missing_security_headers': sorted(required_headers - actual_headers),
@@ -72,6 +78,8 @@ assert result == {
     'certificate_status': 200,
     'profile_certificate_matches_download': True,
     'pair_page_status': 200,
+    'pair_page_supports_home_screen_recovery': True,
+    'session_without_cookie_status': 401,
     'root_without_cookie_status': 401,
     'wrong_pairing_attempt_statuses': [403, 403, 403, 403, 403, 429],
     'missing_security_headers': [],
