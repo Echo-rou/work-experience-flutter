@@ -29,6 +29,7 @@ void main() {
       expect(rects[index].bottom, lessThan(rects[index + 1].top));
     }
     expect(rects.map((rect) => rect.width).toSet().length, 1);
+    expect(find.byKey(const ValueKey('record-add-attachment')), findsOneWidget);
   });
 
   testWidgets('Enter adds an item and Shift Enter stays in the current item',
@@ -38,6 +39,8 @@ void main() {
     ));
 
     final first = find.byKey(const ValueKey('record-item-0'));
+    await tester.ensureVisible(first);
+    await tester.pumpAndSettle();
     await tester.tap(first);
     await tester.enterText(first, 'First line');
 
@@ -60,7 +63,10 @@ void main() {
       home: EntryEditorPage(state: WorkLibraryState(LocalRepository())),
     ));
 
-    await tester.tap(find.byKey(const ValueKey('add-item-0')));
+    final add = find.byKey(const ValueKey('add-item-0'));
+    await tester.ensureVisible(add);
+    await tester.pumpAndSettle();
+    await tester.tap(add);
     await tester.pump();
 
     expect(find.byKey(const ValueKey('record-item-1')), findsOneWidget);

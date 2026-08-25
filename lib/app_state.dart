@@ -4,9 +4,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import 'models/attachment_record.dart';
 import 'models/work_entry.dart';
+import 'services/attachment_repository.dart';
 import 'services/lan_host_service.dart';
 import 'services/lan_sync_service.dart';
 import 'services/local_repository.dart';
@@ -22,12 +25,16 @@ enum LibraryView {
 }
 
 class WorkLibraryState extends ChangeNotifier {
-  WorkLibraryState(this._repository);
+  WorkLibraryState(this._repository,
+      {AttachmentRepository? attachmentRepository})
+      : _attachmentRepository = attachmentRepository ?? AttachmentRepository();
 
   final LocalRepository _repository;
+  final AttachmentRepository _attachmentRepository;
   final _uuid = const Uuid();
   final List<WorkEntry> _entries = [];
   final List<String> _categories = [];
+  final List<AttachmentRecord> _attachments = [];
   final Map<String, dynamic> _meta = {};
   LanHostService? _hostService;
 
@@ -42,6 +49,10 @@ class WorkLibraryState extends ChangeNotifier {
 
   List<WorkEntry> get entries => List.unmodifiable(_entries);
   List<String> get categories => List.unmodifiable(_categories);
+  List<AttachmentRecord> attachmentsForEntry(String entryId) => _attachments
+      .where(
+          (attachment) => attachment.entryId == entryId && !attachment.deleted)
+      .toList(growable: false);
   List<WorkEntry> get activeEntries =>
       _entries.where((e) => !e.isTodo && !e.deleted && !e.purged).toList();
   List<WorkEntry> get trashEntries =>
@@ -77,6 +88,8 @@ class WorkLibraryState extends ChangeNotifier {
       _meta
         ..clear()
         ..addAll(snapshot.meta);
+      await _attachmentRepository.initialize();
+      await _reloadAttachments(notify: false);
       if (pwaToken.length < 32) {
         _meta['hostToken'] = _uuid.v4().replaceAll('-', '');
         await _repository.save(LibrarySnapshot(
@@ -124,6 +137,78 @@ class WorkLibraryState extends ChangeNotifier {
       if (entry.id == id) return entry;
     }
     return null;
+  }
+
+  Future<List<PlatformFile>> pickAttachmentFiles(
+      {required int existingCount}) async {
+    final remaining =
+        AttachmentRepository.maxAttachmentsPerEntry - existingCount;
+    if (remaining <= 0) {
+      throw const FormatException(
+          'Each record can contain up to 10 attachments');
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: AttachmentRepository.allowedExtensions.toList(),
+      allowMultiple: true,
+      withData: false,
+    );
+    if (result == null) return const [];
+    if (result.files.length > remaining) {
+      throw FormatException('You can add up to $remaining more attachment(s)');
+    }
+    for (final file in result.files) {
+      AttachmentRepository.validateFile(file.name, file.size);
+      if (file.path == null && file.bytes == null) {
+        throw FormatException('Could not read ${file.name}');
+      }
+    }
+    return result.files;
+  }
+
+  Future<void> addAttachmentFiles(
+      String entryId, List<PlatformFile> files) async {
+    if (findEntry(entryId) == null) {
+      throw const FormatException('Save the record before adding attachments');
+    }
+    final current = await _attachmentRepository.activeCountForEntry(entryId);
+    if (current + files.length > AttachmentRepository.maxAttachmentsPerEntry) {
+      throw const FormatException(
+          'Each record can contain up to 10 attachments');
+    }
+    for (final file in files) {
+      final bytes = file.bytes ??
+          (file.path == null ? null : await File(file.path!).readAsBytes());
+      if (bytes == null) throw FormatException('Could not read ${file.name}');
+      await _attachmentRepository.addFile(
+        entryId: entryId,
+        name: file.name,
+        bytes: Uint8List.fromList(bytes),
+      );
+    }
+    await _reloadAttachments();
+  }
+
+  Future<void> deleteAttachment(String id) async {
+    final record = _attachments.where((item) => item.id == id).firstOrNull;
+    if (record == null) return;
+    await _attachmentRepository.markDeleted(
+        id, DateTime.now().millisecondsSinceEpoch);
+    await _reloadAttachments();
+  }
+
+  Future<String> materializeAttachment(String id) async {
+    final payload = await _attachmentRepository.read(id);
+    if (payload == null) {
+      throw const FormatException('Attachment is unavailable');
+    }
+    final directory = Directory('${(await getTemporaryDirectory()).path}'
+        '${Platform.pathSeparator}work_experience_attachments');
+    await directory.create(recursive: true);
+    final file = File('${directory.path}${Platform.pathSeparator}'
+        '${payload.record.id}-${payload.record.name}');
+    await file.writeAsBytes(payload.bytes, flush: true);
+    return file.path;
   }
 
   Future<WorkEntry> saveEntry({
@@ -260,6 +345,8 @@ class WorkLibraryState extends ChangeNotifier {
       deletedAt: now,
       updatedAt: now,
     ));
+    await _attachmentRepository.deleteForEntry(id, now);
+    await _reloadAttachments(notify: false);
     await _persist();
   }
 
@@ -272,6 +359,7 @@ class WorkLibraryState extends ChangeNotifier {
           deletedAt: now,
           updatedAt: now,
         );
+        await _attachmentRepository.deleteForEntry(_entries[i].id, now);
       }
     }
     await _persist();
@@ -474,6 +562,7 @@ class WorkLibraryState extends ChangeNotifier {
           await service.putCategory(category);
         }
       }
+      await _syncLanAttachments(service);
       _meta['lastSyncAt'] = DateTime.now().millisecondsSinceEpoch;
       syncMessage = 'Sync complete';
       await _persist();
@@ -495,6 +584,10 @@ class WorkLibraryState extends ChangeNotifier {
       deleteStoreValue: _deleteHostedValue,
       clearStore: _clearHostedStore,
       writeBatch: _writeHostedBatch,
+      readAttachmentManifest: _readHostedAttachmentManifest,
+      readAttachment: _attachmentRepository.read,
+      writeAttachment: _writeHostedAttachment,
+      deleteAttachment: _deleteHostedAttachment,
       onPairingCodeChanged: notifyListeners,
     );
     try {
@@ -542,6 +635,9 @@ class WorkLibraryState extends ChangeNotifier {
       throw const FormatException('missing category name');
     }
     for (final entry in parsedEntries) {
+      if (entry.purged) {
+        await _attachmentRepository.deleteForEntry(entry.id, entry.updatedAt);
+      }
       final current = findEntry(entry.id);
       if (current == null) {
         _entries.add(entry);
@@ -556,6 +652,32 @@ class WorkLibraryState extends ChangeNotifier {
       if (!_categories.contains(name)) _categories.add(name);
     }
     await _persist();
+  }
+
+  Future<List<Map<String, dynamic>>> _readHostedAttachmentManifest() async =>
+      (await _attachmentRepository.listAll())
+          .map((attachment) => attachment.toJson())
+          .toList();
+
+  Future<void> _writeHostedAttachment(
+      Map<String, dynamic> value, List<int> bytes) async {
+    final record = AttachmentRecord.fromJson(value);
+    if (findEntry(record.entryId) == null) {
+      throw const FormatException('Attachment record does not exist');
+    }
+    final known = _attachments.any((item) => item.id == record.id);
+    if (!known &&
+        await _attachmentRepository.activeCountForEntry(record.entryId) >=
+            AttachmentRepository.maxAttachmentsPerEntry) {
+      throw const FormatException('This record already has 10 attachments');
+    }
+    await _attachmentRepository.upsert(record, Uint8List.fromList(bytes));
+    await _reloadAttachments();
+  }
+
+  Future<void> _deleteHostedAttachment(String id, int updatedAt) async {
+    await _attachmentRepository.markDeleted(id, updatedAt);
+    await _reloadAttachments();
   }
 
   Future<void> _writeHostedStore(
@@ -587,6 +709,9 @@ class WorkLibraryState extends ChangeNotifier {
   Future<void> _deleteHostedValue(String store, String key) async {
     if (store == 'entries') {
       _entries.removeWhere((entry) => entry.id == key);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await _attachmentRepository.deleteForEntry(key, now);
+      await _reloadAttachments(notify: false);
     } else if (store == 'categories') {
       _categories.remove(key);
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -613,6 +738,40 @@ class WorkLibraryState extends ChangeNotifier {
       _meta['hostToken'] = token;
     }
     await _persist();
+  }
+
+  Future<void> _syncLanAttachments(LanSyncService service) async {
+    final remote = await service.pullAttachmentManifest();
+    final local = await _attachmentRepository.listAll();
+    final localById = {for (final item in local) item.id: item};
+    final remoteById = {for (final item in remote) item.id: item};
+    for (final id in {...localById.keys, ...remoteById.keys}) {
+      final here = localById[id], there = remoteById[id];
+      if (here != null && (there == null || here.version > there.version)) {
+        if (here.deleted) {
+          await service.deleteAttachment(here);
+        } else {
+          final payload = await _attachmentRepository.read(id);
+          if (payload != null) await service.putAttachment(payload);
+        }
+      } else if (there != null &&
+          (here == null || there.version > here.version)) {
+        if (there.deleted) {
+          await _attachmentRepository.markDeleted(id, there.version);
+        } else {
+          final payload = await service.downloadAttachment(there);
+          await _attachmentRepository.upsert(there, payload);
+        }
+      }
+    }
+    await _reloadAttachments(notify: false);
+  }
+
+  Future<void> _reloadAttachments({bool notify = true}) async {
+    _attachments
+      ..clear()
+      ..addAll(await _attachmentRepository.listAll());
+    if (notify) notifyListeners();
   }
 
   Future<void> _persist() async {

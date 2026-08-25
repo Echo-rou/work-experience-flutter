@@ -6,7 +6,7 @@ void main() {
   test('service worker refreshes the offline app shell', () async {
     final source = await File('assets/pwa/sw.js').readAsString();
 
-    expect(source, contains("const CACHE = 'work-experience-pwa-v9'"));
+    expect(source, contains("const CACHE = 'work-experience-pwa-v10'"));
     expect(source, contains("cache.put('/app-shell', response.clone())"));
     expect(source, contains('self.skipWaiting()'));
     expect(source, contains('self.clients.claim()'));
@@ -72,6 +72,19 @@ void main() {
     expect(source, isNot(contains('for(const e of list) await Storage.del')));
   });
 
+  test('PWA stores and synchronizes binary attachments separately', () async {
+    final source = await File('assets/pwa/index.html').readAsString();
+    final host =
+        await File('lib/services/lan_host_service.dart').readAsString();
+
+    expect(source, contains('DB_VER=3'));
+    expect(source, contains('createObjectStore("attachments"'));
+    expect(source, contains('_syncAttachments()'));
+    expect(source, contains('X-Attachment-Meta'));
+    expect(source, contains('id="attachment-input"'));
+    expect(host, contains("s[1] == 'attachments'"));
+    expect(host, contains('25 * 1024 * 1024'));
+  });
   test('LAN host serializes mutations and rotates one-time pairing codes',
       () async {
     final host =

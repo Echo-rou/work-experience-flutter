@@ -1,4 +1,4 @@
-const CACHE = 'work-experience-pwa-v9';
+const CACHE = 'work-experience-pwa-v10';
 const SHELL = ['/app-shell', '/pwa-icon.png'];
 
 self.addEventListener('install', event => {

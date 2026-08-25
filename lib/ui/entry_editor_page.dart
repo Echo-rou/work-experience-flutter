@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -24,7 +25,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   late final TextEditingController _link;
   final List<TextEditingController> _items = [];
   final List<FocusNode> _itemFocusNodes = [];
+  final List<PlatformFile> _pendingAttachments = [];
+  final Set<String> _removedAttachmentIds = {};
   bool _submitting = false;
+  bool _pickingAttachment = false;
   bool _dirty = false;
 
   @override
@@ -168,6 +172,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                   const InputDecoration(hintText: 'https://…'),
                             ),
                           ),
+                          _Field(
+                            label: 'Attachments (optional)',
+                            hint:
+                                'PDF, Word, Excel, PowerPoint, text and images. Up to 10 files, 25 MiB each.',
+                            child: _buildAttachments(),
+                          ),
                           const Text(
                             'Items',
                             style: TextStyle(fontWeight: FontWeight.w600),
@@ -216,6 +226,115 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           ),
         ),
       );
+
+  Widget _buildAttachments() {
+    final existing = widget.entry == null
+        ? const <dynamic>[]
+        : widget.state
+            .attachmentsForEntry(widget.entry!.id)
+            .where((item) => !_removedAttachmentIds.contains(item.id))
+            .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (existing.isNotEmpty || _pendingAttachments.isNotEmpty)
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFE1D9CB)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                for (final attachment in existing)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.attach_file),
+                    title: Text(attachment.name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(_formatBytes(attachment.size)),
+                    trailing: IconButton(
+                      tooltip: 'Remove attachment',
+                      onPressed: _submitting
+                          ? null
+                          : () => setState(() {
+                                _removedAttachmentIds.add(attachment.id);
+                                _dirty = true;
+                              }),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                for (var index = 0; index < _pendingAttachments.length; index++)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.upload_file_outlined),
+                    title: Text(_pendingAttachments[index].name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                        '${_formatBytes(_pendingAttachments[index].size)} · Pending save'),
+                    trailing: IconButton(
+                      tooltip: 'Remove attachment',
+                      onPressed: _submitting
+                          ? null
+                          : () => setState(() {
+                                _pendingAttachments.removeAt(index);
+                                _dirty = true;
+                              }),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        if (existing.isNotEmpty || _pendingAttachments.isNotEmpty)
+          const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('record-add-attachment'),
+          onPressed:
+              _submitting || _pickingAttachment ? null : _pickAttachments,
+          icon: _pickingAttachment
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add),
+          label: const Text('Add files'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickAttachments() async {
+    setState(() => _pickingAttachment = true);
+    try {
+      final existing = widget.entry == null
+          ? 0
+          : widget.state.attachmentsForEntry(widget.entry!.id).length -
+              _removedAttachmentIds.length;
+      final files = await widget.state.pickAttachmentFiles(
+          existingCount: existing + _pendingAttachments.length);
+      if (files.isNotEmpty && mounted) {
+        setState(() {
+          _pendingAttachments.addAll(files);
+          _dirty = true;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _pickingAttachment = false);
+    }
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '$bytes B';
+  }
 
   Widget _buildItem(int index) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
@@ -396,7 +515,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     }
     setState(() => _submitting = true);
     try {
-      await widget.state.saveEntry(
+      final saved = await widget.state.saveEntry(
         id: widget.entry?.id,
         date: _date.text,
         title: '',
@@ -407,6 +526,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         items: items,
         link: _link.text,
       );
+      for (final id in _removedAttachmentIds) {
+        await widget.state.deleteAttachment(id);
+      }
+      if (_pendingAttachments.isNotEmpty) {
+        await widget.state.addAttachmentFiles(saved.id, _pendingAttachments);
+      }
       if (mounted) {
         _dirty = false;
         Navigator.pop(context, true);

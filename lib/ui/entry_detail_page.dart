@@ -23,6 +23,7 @@ class EntryDetailPage extends StatelessWidget {
             return const Scaffold(
                 body: Center(child: Text('Record not found')));
           }
+          final attachments = state.attachmentsForEntry(entry.id);
           return Scaffold(
             appBar: AppBar(
               backgroundColor: AppColors.background,
@@ -126,6 +127,50 @@ class EntryDetailPage extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (attachments.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text('Attachments',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF4A5261))),
+                      const SizedBox(height: 8),
+                      Card(
+                        child: Column(
+                          children: [
+                            for (final attachment in attachments)
+                              ListTile(
+                                leading: const Icon(Icons.attach_file),
+                                title: Text(attachment.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                                subtitle: Text(_formatBytes(attachment.size)),
+                                onTap: () =>
+                                    _openAttachment(context, attachment.id),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Open attachment',
+                                      onPressed: () => _openAttachment(
+                                          context, attachment.id),
+                                      icon: const Icon(Icons.open_in_new),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Delete attachment',
+                                      onPressed: () => _deleteAttachment(
+                                          context,
+                                          attachment.id,
+                                          attachment.name),
+                                      icon: const Icon(Icons.delete_outline,
+                                          color: AppColors.danger),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (entry.link.isNotEmpty) ...[
                       const SizedBox(height: 18),
                       Align(
@@ -144,6 +189,51 @@ class EntryDetailPage extends StatelessWidget {
           );
         },
       );
+
+  Future<void> _openAttachment(BuildContext context, String id) async {
+    try {
+      final path = await state.materializeAttachment(id);
+      final opened =
+          await launchUrl(Uri.file(path), mode: LaunchMode.externalApplication);
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open this attachment')));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Open failed: $error')));
+      }
+    }
+  }
+
+  Future<void> _deleteAttachment(
+      BuildContext context, String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete attachment?'),
+        content: Text('“$name” will also be removed from paired devices.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed == true) await state.deleteAttachment(id);
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '$bytes B';
+  }
 
   Future<void> _openHttpLink(BuildContext context, String value) async {
     final uri = parseSafeHttpUrl(value);

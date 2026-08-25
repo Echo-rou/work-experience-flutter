@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../models/attachment_record.dart';
 import '../models/work_entry.dart';
 
 class LanSnapshot {
@@ -69,6 +71,54 @@ class LanSyncService {
         .where((e) => e.isNotEmpty)
         .toList();
     return LanSnapshot(entries: entries, categories: categories);
+  }
+
+  Future<List<AttachmentRecord>> pullAttachmentManifest() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/api/attachments'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    _check(response);
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List)
+        .whereType<Map>()
+        .map((value) =>
+            AttachmentRecord.fromJson(Map<String, dynamic>.from(value)))
+        .where((value) => value.id.isNotEmpty && value.entryId.isNotEmpty)
+        .toList();
+  }
+
+  Future<Uint8List> downloadAttachment(AttachmentRecord record) async {
+    final response = await http.get(
+        Uri.parse('$baseUrl/api/attachments/${Uri.encodeComponent(record.id)}'),
+        headers: {'X-Key': token}).timeout(const Duration(seconds: 45));
+    _check(response);
+    return response.bodyBytes;
+  }
+
+  Future<void> putAttachment(AttachmentPayload payload) async {
+    final metadata =
+        base64UrlEncode(utf8.encode(jsonEncode(payload.record.toJson())));
+    final response = await http
+        .put(
+          Uri.parse('$baseUrl/api/attachments/'
+              '${Uri.encodeComponent(payload.record.id)}'),
+          headers: {
+            'X-Key': token,
+            'X-Attachment-Meta': metadata,
+            'Content-Type': payload.record.mimeType,
+          },
+          body: payload.bytes,
+        )
+        .timeout(const Duration(seconds: 60));
+    _check(response);
+  }
+
+  Future<void> deleteAttachment(AttachmentRecord record) async {
+    final uri = Uri.parse('$baseUrl/api/attachments/'
+            '${Uri.encodeComponent(record.id)}')
+        .replace(queryParameters: {'updatedAt': record.version.toString()});
+    final response = await http.delete(uri,
+        headers: {'X-Key': token}).timeout(const Duration(seconds: 12));
+    _check(response);
   }
 
   Future<void> putEntry(WorkEntry entry) =>

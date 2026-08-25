@@ -265,6 +265,12 @@ mark{background:#f5e2a8;padding:0 2px;border-radius:2px}
 }
 .editor-actions{display:flex;gap:12px;align-items:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
 .draft-tip{font-size:12px;color:var(--muted);margin-left:auto}
+.attachment-box{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:9px}
+.attachment-row{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line);min-width:0}
+.attachment-row:last-child{border-bottom:none}
+.attachment-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-size{font-size:12px;color:var(--muted);flex-shrink:0}
+.attachment-row button{flex-shrink:0;padding:3px 7px;color:var(--muted)}
 
 /* Markdown body */
 .md-body{line-height:1.8;font-size:14.5px;word-wrap:break-word}
@@ -603,7 +609,7 @@ function renderMarkdown(src){
 }
 
 /* ---------------- 3. Storage (always local-first; HTTPS LAN sync in background) ---------------- */
-const DB_NAME="fengkong_kb", DB_VER=2;
+const DB_NAME="fengkong_kb", DB_VER=3;
 const Storage={
   mode:"idb", db:null, err:null, key:"", syncing:false, lastSyncAt:0, clockOffset:0, lastVersion:0,
   open(){
@@ -620,6 +626,7 @@ const Storage={
         if(!db.objectStoreNames.contains("entries")) db.createObjectStore("entries",{keyPath:"id"});
         if(!db.objectStoreNames.contains("categories")) db.createObjectStore("categories",{keyPath:"name"});
         if(!db.objectStoreNames.contains("meta")) db.createObjectStore("meta",{keyPath:"key"});
+        if(!db.objectStoreNames.contains("attachments")) db.createObjectStore("attachments",{keyPath:"id"});
       };
       req.onsuccess=e=>{ this.db=e.target.result; resolve(); };
       req.onerror=()=>{ this._fallback("Failed to open IndexedDB"); resolve(); };
@@ -651,6 +658,7 @@ const Storage={
     });
   },
   put(store,val){
+    if(this.mode==="ls"&&store==="attachments") return Promise.reject(new Error("Attachments require IndexedDB"));
     if(this.mode==="ls"){
       const o=this._lsRead(store);
       o[store==="categories"?val.name:(store==="meta"?val.key:val.id)]=val;
@@ -680,6 +688,55 @@ const Storage={
     const adjusted=Math.floor(Date.now()+this.clockOffset), floor=Number(previous)||0;
     this.lastVersion=Math.max(adjusted,this.lastVersion+1,floor+1);
     return this.lastVersion;
+  },
+  _encodeMetadata(value){
+    const bytes=new TextEncoder().encode(JSON.stringify(value));
+    let binary="";
+    for(let i=0;i<bytes.length;i+=4096) binary+=String.fromCharCode(...bytes.subarray(i,i+4096));
+    return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+  },
+  async _uploadAttachment(item){
+    if(!(item.blob instanceof Blob)) throw new Error("Attachment data is unavailable");
+    const meta={id:item.id,entryId:item.entryId,name:item.name,mimeType:item.mimeType,
+      size:item.size,sha256:item.sha256,createdAt:item.createdAt,updatedAt:item.updatedAt,
+      deleted:false};
+    const r=await fetch("/api/attachments/"+encodeURIComponent(item.id),{
+      method:"PUT",headers:{"X-Key":this.key||"","X-Attachment-Meta":this._encodeMetadata(meta),
+      "Content-Type":item.mimeType||"application/octet-stream"},body:item.blob,cache:"no-store"});
+    if(!r.ok){let d={};try{d=await r.json();}catch(e){}throw new Error(d.error||("Server responded "+r.status));}
+  },
+  async _downloadAttachment(meta){
+    const r=await fetch("/api/attachments/"+encodeURIComponent(meta.id),{
+      headers:{"X-Key":this.key||""},cache:"no-store"});
+    if(!r.ok) throw new Error("Attachment download failed ("+r.status+")");
+    const blob=await r.blob();
+    if(blob.size!==Number(meta.size)) throw new Error("Attachment size check failed");
+    if(meta.sha256&&(await attachmentHash(blob))!==meta.sha256) throw new Error("Attachment checksum failed");
+    await this.put("attachments",Object.assign({},meta,{blob:blob,deleted:false}));
+  },
+  async _deleteRemoteAttachment(item){
+    const r=await fetch("/api/attachments/"+encodeURIComponent(item.id)+
+      "?updatedAt="+encodeURIComponent(this._version(item)),{
+      method:"DELETE",headers:{"X-Key":this.key||""},cache:"no-store"});
+    if(!r.ok) throw new Error("Attachment deletion sync failed ("+r.status+")");
+  },
+  async _syncAttachments(){
+    if(this.mode==="ls") return;
+    const local=await this.getAll("attachments");
+    const remote=await this._req("GET","/api/attachments");
+    const localById=new Map(local.filter(x=>x&&x.id).map(x=>[x.id,x]));
+    const remoteById=new Map((remote||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+    const ids=new Set([...localById.keys(),...remoteById.keys()]);
+    for(const id of ids){
+      const here=localById.get(id),there=remoteById.get(id);
+      if(here&&(!there||this._version(here)>this._version(there))){
+        if(here.deleted) await this._deleteRemoteAttachment(here);
+        else await this._uploadAttachment(here);
+      }else if(there&&(!here||this._version(there)>this._version(here))){
+        if(there.deleted) await this.put("attachments",Object.assign({},there,{blob:null}));
+        else await this._downloadAttachment(there);
+      }
+    }
   },
   _mergeRemoteEntry(remote){
     if(this.mode==="ls"){
@@ -721,6 +778,7 @@ const Storage={
       for(const remote of (data.categories||[])){
         if(remote&&remote.name&&!localCats.has(remote.name)) await this.put("categories",remote);
       }
+      await this._syncAttachments();
       this.lastSyncAt=Date.now();
       await this.put("meta",{key:"lastSyncAt",value:this.lastSyncAt});
       return true;
@@ -732,6 +790,7 @@ const DEFAULT_CATS=["Work","Learning","Life","Ideas","Reading"];
 const state={
   entries:[],
   categories:[],
+  attachments:[],
   meta:{ recentCats:[], lastBackupAt:0, lockHash:"", backupBannerDismissed:0 },
   view:"home",
   searchQuery:"",
@@ -745,6 +804,24 @@ function activeEntries(){ return state.entries.filter(e=>e.kind!=="todo"&&!e.del
 function trashedEntries(){ return state.entries.filter(e=>e.kind!=="todo"&&e.deleted&&!e.purged); }
 function todayTodos(){ return state.entries.filter(e=>e.kind==="todo"&&!e.deleted&&!e.purged&&e.date===todayStr()).sort((a,b)=>a.createdAt-b.createdAt); }
 function entryById(id){ return state.entries.find(e=>e.id===id); }
+function attachmentsForEntry(entryId){ return state.attachments.filter(a=>a.entryId===entryId&&!a.deleted); }
+function formatBytes(bytes){
+  bytes=Number(bytes)||0;
+  if(bytes>=1048576) return (bytes/1048576).toFixed(1)+" MB";
+  if(bytes>=1024) return (bytes/1024).toFixed(1)+" KB";
+  return bytes+" B";
+}
+function attachmentMime(name,type){
+  const ext=String(name).split(".").pop().toLowerCase();
+  return ({pdf:"application/pdf",doc:"application/msword",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls:"application/vnd.ms-excel",xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt:"application/vnd.ms-powerpoint",pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt:"text/plain",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp",heic:"image/heic"})[ext]||type||"application/octet-stream";
+}
+async function attachmentHash(blob){
+  const digest=await crypto.subtle.digest("SHA-256",await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("");
+}
 function entryPointList(e){
   if(Array.isArray(e.items)){
     const explicit=e.items.map(x=>String(x||"").trim()).filter(Boolean);
@@ -772,6 +849,7 @@ async function loadAll(){
   state.corruptCount=entryReadFailed?-1:bad.length;
 
   try{ state.categories=await Storage.getAll("categories"); }catch(e){ state.categories=[]; }
+  try{ state.attachments=await Storage.getAll("attachments"); }catch(e){ state.attachments=[]; }
   if(!state.categories.length){
     for(const c of DEFAULT_CATS) await Storage.put("categories",{name:c,createdAt:Date.now()});
     state.categories=await Storage.getAll("categories");
@@ -853,6 +931,10 @@ async function purgeEntry(id){
   const now=Storage.versionNow();
   Object.assign(e,{deleted:true,purged:true,deletedAt:now,updatedAt:now});
   await Storage.put("entries",e);
+  for(const attachment of attachmentsForEntry(id)){
+    Object.assign(attachment,{deleted:true,deletedAt:now,updatedAt:now,blob:null});
+    await Storage.put("attachments",attachment);
+  }
 }
 
 /* ---------------- 6. Views ---------------- */
@@ -871,7 +953,7 @@ function renderNav(){
   const trash=trashedEntries().length;
   $("#nav").innerHTML=NAVS.map(n=>{
     let count="";
-    
+
     if(n.key==="trash"&&trash) count='<span class="count">'+trash+'</span>';
     return '<button class="nav-item'+(state.view===n.key?" active":"")+'" data-nav="'+n.key+'">'+
       '<span class="icon">'+n.icon+'</span><span class="txt">'+n.txt+'</span>'+count+'</button>';
@@ -1271,6 +1353,7 @@ function renderDetail(v){
   const e=entryById(state.detailId);
   if(!e){ go("home"); return; }
   const points=entryPointList(e);
+  const attachments=attachmentsForEntry(e.id);
   let html='<div style="margin-bottom:16px"><button class="btn btn-ghost btn-sm" id="back-btn">← Back</button></div>'+
     '<div class="card detail-card">'+
     '<div class="detail-meta">'+
@@ -1281,6 +1364,7 @@ function renderDetail(v){
       '<span style="margin-left:auto;font-size:12px">Updated '+fmtTime(e.updatedAt)+'</span>'+
     '</div>'+
     '<div class="detail-block"><div class="blabel">ITEMS</div><div class="md-body">'+points.map((point,i)=>'<div class="point-row" style="align-items:flex-start;margin-bottom:12px"><span class="point-number">'+(i+1)+'.</span><div style="flex:1">'+renderMarkdown(point)+'</div></div>').join("")+'</div></div>'+
+    (attachments.length?'<div class="detail-block"><div class="blabel">ATTACHMENTS</div><div class="attachment-box">'+attachments.map(a=>'<div class="attachment-row"><span>📎</span><span class="attachment-name">'+escapeHtml(a.name)+'</span><span class="attachment-size">'+formatBytes(a.size)+'</span><button data-open-attachment="'+escapeHtml(a.id)+'">Open</button><button data-delete-attachment="'+escapeHtml(a.id)+'">Delete</button></div>').join("")+'</div></div>':"")+
     '<div class="detail-actions">'+
       '<button class="btn '+(e.favorite?"btn-accent":"btn-ghost")+'" id="d-fav">'+(e.favorite?"★ Favorited":"☆ Favorite")+'</button>'+
       '<button class="btn btn-primary" id="d-edit">Edit</button>'+
@@ -1290,6 +1374,26 @@ function renderDetail(v){
   v.innerHTML=html;
   $("#back-btn").onclick=()=>go("home");
   $("#d-fav").onclick=async ()=>{ await toggleFavorite(e.id); render(); };
+  v.querySelectorAll("[data-open-attachment]").forEach(button=>{
+    button.onclick=()=>{
+      const attachment=state.attachments.find(a=>a.id===button.getAttribute("data-open-attachment"));
+      if(!attachment||!(attachment.blob instanceof Blob)){toast("Attachment data is unavailable until sync completes",true);return;}
+      const url=URL.createObjectURL(attachment.blob),link=document.createElement("a");
+      link.href=url;link.target="_blank";link.rel="noopener";link.download=attachment.name;
+      link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    };
+  });
+  v.querySelectorAll("[data-delete-attachment]").forEach(button=>{
+    button.onclick=async()=>{
+      const attachment=state.attachments.find(a=>a.id===button.getAttribute("data-delete-attachment"));
+      if(!attachment) return;
+      const ok=await confirmDialog("Delete Attachment",'"'+attachment.name+'" will also be removed from paired devices.',{danger:true,okText:"Delete"});
+      if(!ok) return;
+      const version=Storage.versionNow(attachment.updatedAt);
+      Object.assign(attachment,{deleted:true,deletedAt:version,updatedAt:version,blob:null});
+      await Storage.put("attachments",attachment);toast("Attachment deleted");render();
+    };
+  });
   $("#d-edit").onclick=()=>go("editor",e.id);
   $("#d-read").onclick=()=>openReading(e);
   $("#d-del").onclick=async ()=>{
@@ -1357,6 +1461,12 @@ function renderEditor(v){
     '<div class="field"><label>Tags (Enter or comma to add)</label>'+
       '<div class="tags-input" id="tags-box"><input type="text" id="f-tag-input" placeholder="e.g. supply-chain, contract, risk"></div>'+
     '</div>'+
+    '<div class="field"><label>Attachments (optional)</label>'+
+      '<div class="hint" style="margin-bottom:9px">PDF, Word, Excel, PowerPoint, text and images · up to 10 files · 25 MiB each.</div>'+
+      '<div id="attachment-list"></div>'+
+      '<button type="button" class="btn btn-ghost btn-sm" id="add-attachment">＋ Add files</button>'+
+      '<input type="file" id="attachment-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp,.heic" style="display:none">'+
+    '</div>'+
     '<div class="field"><label>Items</label>'+
       '<div class="hint" style="margin-bottom:9px">Return starts a new line inside the current item. Tap ＋ on the right to add the next item.</div>'+
       '<div class="point-list" id="point-list"></div>'+
@@ -1396,6 +1506,51 @@ function renderEditor(v){
     const t=tagInput.value.trim().replace(/,/g,"");
     if(t&&!init.tags.includes(t)){ init.tags.push(t); tagInput.value=""; drawTags(); }
   });
+
+  /* Attachments */
+  const pendingAttachments=[];
+  const removedAttachmentIds=new Set();
+  const attachmentInput=$("#attachment-input"), attachmentList=$("#attachment-list");
+  function currentAttachments(){
+    return editing?attachmentsForEntry(editing.id).filter(a=>!removedAttachmentIds.has(a.id)):[];
+  }
+  function drawAttachments(){
+    const current=currentAttachments();
+    const rows=current.map(a=>
+      '<div class="attachment-row"><span>📎</span><span class="attachment-name">'+escapeHtml(a.name)+'</span>'+
+      '<span class="attachment-size">'+formatBytes(a.size)+'</span>'+
+      '<button type="button" data-remove-attachment="'+escapeHtml(a.id)+'" title="Remove">✕</button></div>'
+    ).concat(pendingAttachments.map((file,i)=>
+      '<div class="attachment-row"><span>⬆</span><span class="attachment-name">'+escapeHtml(file.name)+'</span>'+
+      '<span class="attachment-size">'+formatBytes(file.size)+' · pending</span>'+
+      '<button type="button" data-remove-pending="'+i+'" title="Remove">✕</button></div>'
+    ));
+    attachmentList.innerHTML=rows.length?'<div class="attachment-box">'+rows.join("")+'</div>':"";
+    attachmentList.querySelectorAll("[data-remove-attachment]").forEach(button=>{
+      button.onclick=()=>{removedAttachmentIds.add(button.getAttribute("data-remove-attachment"));drawAttachments();};
+    });
+    attachmentList.querySelectorAll("[data-remove-pending]").forEach(button=>{
+      button.onclick=()=>{pendingAttachments.splice(+button.getAttribute("data-remove-pending"),1);drawAttachments();};
+    });
+  }
+  drawAttachments();
+  $("#add-attachment").onclick=()=>{
+    if(Storage.mode==="ls"){toast("Attachments require normal IndexedDB storage",true);return;}
+    attachmentInput.click();
+  };
+  attachmentInput.onchange=()=>{
+    const allowed=/\.(pdf|docx?|xlsx?|pptx?|txt|jpe?g|png|gif|webp|heic)$/i;
+    const files=Array.from(attachmentInput.files||[]);
+    attachmentInput.value="";
+    for(const file of files){
+      if(!allowed.test(file.name)){toast(file.name+": unsupported file type",true);continue;}
+      if(file.size<=0||file.size>25*1024*1024){toast(file.name+": file must be 25 MiB or smaller",true);continue;}
+      if(file.name.length>180){toast("Attachment file name is too long",true);continue;}
+      if(currentAttachments().length+pendingAttachments.length>=10){toast("Each record can contain up to 10 attachments",true);break;}
+      pendingAttachments.push(file);
+    }
+    drawAttachments();
+  };
 
   /* One point per row */
   const pointList=$("#point-list");
@@ -1469,6 +1624,22 @@ function renderEditor(v){
     try{
       if(editing) data.id=editing.id;
       const saved=await saveEntry(data);
+      for(const id of removedAttachmentIds){
+        const attachment=state.attachments.find(a=>a.id===id);
+        if(!attachment) continue;
+        const version=Storage.versionNow(attachment.updatedAt);
+        Object.assign(attachment,{deleted:true,deletedAt:version,updatedAt:version,blob:null});
+        await Storage.put("attachments",attachment);
+      }
+      for(const file of pendingAttachments){
+        const version=Storage.versionNow();
+        const attachment={id:uid(),entryId:saved.id,name:file.name,
+          mimeType:attachmentMime(file.name,file.type),size:file.size,
+          sha256:await attachmentHash(file),createdAt:version,updatedAt:version,
+          deleted:false,blob:file};
+        state.attachments.push(attachment);
+        await Storage.put("attachments",attachment);
+      }
       if(!editing) localStorage.removeItem(DRAFT_KEY);
       toast(editing?"Changes saved":"Record saved");
       go("detail",saved.id);

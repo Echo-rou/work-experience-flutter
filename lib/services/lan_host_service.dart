@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/services.dart';
 
+import '../models/attachment_record.dart';
 import 'apple_mobileconfig.dart';
 import 'local_certificate_service.dart';
 
@@ -15,6 +16,12 @@ typedef StoreDelete = Future<void> Function(String store, String key);
 typedef StoreClear = Future<void> Function(String store);
 typedef StoreBatchWriter = Future<void> Function(
     List<Map<String, dynamic>> entries, List<Map<String, dynamic>> categories);
+typedef AttachmentManifestReader = Future<List<Map<String, dynamic>>>
+    Function();
+typedef AttachmentReader = Future<AttachmentPayload?> Function(String id);
+typedef AttachmentWriter = Future<void> Function(
+    Map<String, dynamic> metadata, List<int> bytes);
+typedef AttachmentDelete = Future<void> Function(String id, int updatedAt);
 
 class LanHostService {
   LanHostService(
@@ -24,6 +31,10 @@ class LanHostService {
       required this.deleteStoreValue,
       required this.clearStore,
       required this.writeBatch,
+      required this.readAttachmentManifest,
+      required this.readAttachment,
+      required this.writeAttachment,
+      required this.deleteAttachment,
       this.onPairingCodeChanged,
       this.port = 8732,
       this.setupPort = 8731});
@@ -33,6 +44,10 @@ class LanHostService {
   final StoreDelete deleteStoreValue;
   final StoreClear clearStore;
   final StoreBatchWriter writeBatch;
+  final AttachmentManifestReader readAttachmentManifest;
+  final AttachmentReader readAttachment;
+  final AttachmentWriter writeAttachment;
+  final AttachmentDelete deleteAttachment;
   final void Function()? onPairingCodeChanged;
   final int port, setupPort;
   HttpServer? _server, _setupServer;
@@ -206,6 +221,35 @@ class LanHostService {
         return await _serializeMutation(() => _sync(r));
       }
       final s = r.uri.pathSegments;
+      if (s.length >= 2 && s[0] == 'api' && s[1] == 'attachments') {
+        if (r.method == 'GET' && s.length == 2) {
+          return await _json(r, await readAttachmentManifest());
+        }
+        if (s.length == 3 && _validIdentity(s[2])) {
+          final id = s[2];
+          if (r.method == 'GET') return await _downloadAttachment(r, id);
+          if (r.method == 'PUT') {
+            final encoded = r.headers.value('X-Attachment-Meta') ?? '';
+            final metadata = _decodeAttachmentMetadata(encoded);
+            if (metadata['id']?.toString() != id) {
+              throw const FormatException('Attachment id does not match');
+            }
+            final bytes = await _readBytes(r, 25 * 1024 * 1024);
+            await _serializeMutation(() => writeAttachment(metadata, bytes));
+            return await _json(r, {'ok': true});
+          }
+          if (r.method == 'DELETE') {
+            final updatedAt = int.tryParse(
+                    r.uri.queryParameters['updatedAt']?.toString() ?? '') ??
+                0;
+            if (updatedAt <= 0) {
+              throw const FormatException('Missing deletion timestamp');
+            }
+            await _serializeMutation(() => deleteAttachment(id, updatedAt));
+            return await _json(r, {'ok': true});
+          }
+        }
+      }
       if (s.length >= 3 &&
           s[0] == 'api' &&
           s[1] == 'store' &&
@@ -233,6 +277,12 @@ class LanHostService {
         }
       }
       return await _json(r, {'error': 'not found'}, status: 404);
+    } on FormatException catch (e) {
+      try {
+        await _json(r, {'error': e.message}, status: 400);
+      } catch (_) {
+        await r.response.close();
+      }
     } catch (e) {
       try {
         await _json(r, {'error': 'request failed'}, status: 500);
@@ -341,6 +391,56 @@ class LanHostService {
   }
 
   bool _validStore(String v) => v == 'entries' || v == 'categories';
+  bool _validIdentity(String value) =>
+      RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(value);
+
+  Map<String, dynamic> _decodeAttachmentMetadata(String encoded) {
+    if (encoded.isEmpty || encoded.length > 8192) {
+      throw const FormatException('Attachment metadata is invalid');
+    }
+    try {
+      final text = utf8.decode(base64Url.decode(base64Url.normalize(encoded)));
+      final value = jsonDecode(text);
+      if (value is! Map) throw const FormatException();
+      return Map<String, dynamic>.from(value);
+    } catch (_) {
+      throw const FormatException('Attachment metadata is invalid');
+    }
+  }
+
+  Future<void> _downloadAttachment(HttpRequest r, String id) async {
+    final payload = await readAttachment(id);
+    if (payload == null || payload.record.deleted) {
+      return _json(r, {'error': 'attachment not found'}, status: 404);
+    }
+    _applyHeaders(r.response);
+    final parts = payload.record.mimeType.split('/');
+    r.response.headers.contentType = parts.length == 2
+        ? ContentType(parts[0], parts[1])
+        : ContentType.binary;
+    r.response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+    r.response.headers.set('Content-Disposition',
+        "attachment; filename*=UTF-8''${Uri.encodeComponent(payload.record.name)}");
+    r.response.headers.contentLength = payload.bytes.length;
+    r.response.add(payload.bytes);
+    await r.response.close();
+  }
+
+  Future<List<int>> _readBytes(HttpRequest r, int limit) async {
+    if (r.contentLength > limit) {
+      throw const FormatException('Attachment exceeds the 25 MiB limit');
+    }
+    final bytes = <int>[];
+    await for (final chunk in r) {
+      bytes.addAll(chunk);
+      if (bytes.length > limit) {
+        throw const FormatException('Attachment exceeds the 25 MiB limit');
+      }
+    }
+    if (bytes.isEmpty) throw const FormatException('Attachment is empty');
+    return bytes;
+  }
+
   Future<Object?> _readJson(HttpRequest r) async {
     if (r.contentLength > 20 * 1024 * 1024) {
       throw const FormatException('request too large');
